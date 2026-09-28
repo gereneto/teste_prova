@@ -13,7 +13,7 @@ Ao abrir o site, escolha quem você é: professor(a), coordenação ou equipe So
 
 Um roteiro para ver tudo em poucos minutos:
 
-1. **Professor(a).** Colégio Monte Verde, Priscila Ferreira (1º ano A), “Avaliação diagnóstica — 3º bimestre”, “Lançar respostas”. Lance alguns alunos pelo teclado: `A` `B` `C` `D` (ou `1` a `4`) marcam e avançam, `espaço` é em branco, `X` é rasurada, `Backspace` volta uma questão e `Enter` vai para o próximo aluno. No fim, conclua o lançamento e veja os resultados da turma.
+1. **Professor(a).** Colégio Monte Verde, Priscila Ferreira (1º ano A), “Avaliação diagnóstica — 3º bimestre”, “Lançar respostas”. Lance alguns alunos pelo teclado: `1` a `4` (ou `A` a `D`) marcam e avançam, `espaço` é em branco, `X` é rasurada, `Backspace` volta uma questão e `Enter` vai para o próximo aluno. Também dá para clicar: cada questão tem as quatro alternativas e, embaixo, “Em branco” e “Rasurada”. No fim, conclua o lançamento e veja os resultados da turma.
 2. **Coordenação.** No painel, o andamento de cada turma e a comparação entre alunos novos e antigos. Em “Turmas e Alunos”, abra uma turma e use “Adicionar alunos” para colar uma lista de nomes. Se a lista tiver o ano de entrada no colégio ao lado do nome (“Maria Souza;2023”), ele vem junto.
 3. **Equipe Solar.** Em “Estatísticas”, escolha a avaliação do 3º bimestre e o 4º ano: a questão 12 aparece com o alerta de **gabarito suspeito**, porque o gabarito dela está errado de propósito. Clique em “Editar gabarito”, troque a resposta da questão 12 para A e volte às estatísticas: os resultados de todas as turmas são recalculados na hora.
 
@@ -21,7 +21,7 @@ Duas abas abertas ao mesmo tempo, uma como professor e outra como Solar, mostram
 
 ## O que esta versão faz
 
-- **Lançamento rápido:** um aluno por vez, na ordem da chamada, com botões grandes no celular e atalhos de teclado no computador. Cada marcação é salva na hora. Há marcações para aluno que faltou, prova adaptada (fica fora das médias), questão em branco e rasurada. O site não deixa passar para o próximo aluno com questão vazia.
+- **Lançamento rápido:** um aluno por vez, na ordem da chamada, com botões grandes no celular e atalhos de teclado no computador. As linhas das questões alternam vermelho, laranja e amarelo, as cores do símbolo da Solar, o que ajuda a não pular linha ao copiar do papel; marcada a resposta, as outras opções da questão ficam em cinza claro. Cada marcação é salva na hora. Há marcações para aluno que faltou, prova adaptada (fica fora das médias), questão em branco e rasurada. O site não deixa passar para o próximo aluno com questão vazia.
 - **Correção automática:** o professor só copia a letra marcada. Se a Solar corrige um gabarito ou anula uma questão, tudo é recalculado.
 - **Resultados da turma:** média, faixas de desempenho, alunos que precisam de atenção, acerto por disciplina, por questão (com a alternativa errada mais marcada) e por habilidade da BNCC. Exportação para planilha.
 - **Painel da coordenação:** andamento do lançamento por turma, médias e comparação das turmas por disciplina. Cadastro de turmas, professores e alunos (colando a lista de uma planilha).

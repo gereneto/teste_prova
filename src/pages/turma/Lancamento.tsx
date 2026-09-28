@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Asterisk, ChartColumn, Check, Circle, CircleDashed, CloudCheck, FileText, LoaderCircle, Minus, Pencil, UserX } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChartColumn, Check, Circle, CircleDashed, CloudCheck, FileText, LoaderCircle, Pencil, UserX } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Aviso, Cabecalho, Progresso, Selo, Vazio } from '../../components/ui'
@@ -20,6 +20,9 @@ export default function Lancamento() {
 }
 
 const TECLAS_LETRA: Record<string, number> = { a: 0, b: 1, c: 2, d: 3, e: 4, '1': 0, '2': 1, '3': 2, '4': 3, '5': 4 }
+
+// As linhas das questões alternam as cores do símbolo da Solar, o que ajuda a não pular linha ao copiar do papel.
+const CORES_DAS_LINHAS = ['cor-vermelha', 'cor-laranja', 'cor-amarela'] as const
 
 function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos, base }: ContextoTurma) {
   const navigate = useNavigate()
@@ -274,29 +277,64 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
               <div className="questoes" style={{ gridTemplateRows: `repeat(${Math.min(10, total)}, auto)` }}>
                 {caderno.questoes.map((q, i) => {
                   const marca = marcaEm(marcas, i)
+                  const classes = [
+                    'questao',
+                    CORES_DAS_LINHAS[i % CORES_DAS_LINHAS.length],
+                    i === cursor.questao && 'atual',
+                    q.anulada && 'anulada',
+                    marca !== VAZIO && 'respondida',
+                  ]
                   return (
                     <div
                       key={i}
-                      className={`questao ${i === cursor.questao ? 'atual' : ''} ${q.anulada ? 'anulada' : ''}`}
+                      className={classes.filter(Boolean).join(' ')}
                       onClick={(e) => {
-                        if (!q.anulada && !(e.target as HTMLElement).closest('.bolha')) setCursor({ alunoId: aluno.id, questao: i })
+                        if (!q.anulada && !(e.target as HTMLElement).closest('button')) setCursor({ alunoId: aluno.id, questao: i })
                       }}
                     >
                       <span className="questao-num">{i + 1}</span>
-                      {letras.map((letra) => (
-                        <button
-                          key={letra}
-                          type="button"
-                          className={`bolha ${marca === letra ? 'marcada' : ''}`}
-                          disabled={q.anulada}
-                          aria-pressed={marca === letra}
-                          aria-label={`Questão ${i + 1}, alternativa ${letra}`}
-                          onClick={() => marcar(letra, i)}
-                        >
-                          {letra}
-                        </button>
-                      ))}
-                      <span className="questao-extra">{q.anulada ? 'anulada' : marca === BRANCO ? 'branco' : marca === RASURA ? 'rasura' : ''}</span>
+                      <div className="questao-bolhas">
+                        {letras.map((letra) => (
+                          <button
+                            key={letra}
+                            type="button"
+                            className={`bolha ${marca === letra ? 'marcada' : ''}`}
+                            disabled={q.anulada}
+                            aria-pressed={marca === letra}
+                            aria-label={`Questão ${i + 1}, alternativa ${letra}`}
+                            onClick={() => marcar(letra, i)}
+                          >
+                            {letra}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="questao-extras">
+                        {q.anulada ? (
+                          <span className="questao-anulada">Questão anulada</span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className={`opcao-extra ${marca === BRANCO ? 'marcada' : ''}`}
+                              aria-pressed={marca === BRANCO}
+                              aria-label={`Questão ${i + 1}, em branco`}
+                              onClick={() => marcar(BRANCO, i)}
+                            >
+                              Em branco
+                            </button>
+                            <button
+                              type="button"
+                              className={`opcao-extra ${marca === RASURA ? 'marcada' : ''}`}
+                              aria-pressed={marca === RASURA}
+                              aria-label={`Questão ${i + 1}, rasurada`}
+                              title="O aluno marcou mais de uma alternativa"
+                              onClick={() => marcar(RASURA, i)}
+                            >
+                              Rasurada
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -304,16 +342,6 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
             )}
 
             <div className="lanc-acoes">
-              {situacao === 'presente' && (
-                <>
-                  <button className="btn" onClick={() => marcar(BRANCO)}>
-                    <Minus size={16} aria-hidden /> Em branco
-                  </button>
-                  <button className="btn" onClick={() => marcar(RASURA)} title="O aluno marcou mais de uma alternativa">
-                    <Asterisk size={16} aria-hidden /> Rasurada
-                  </button>
-                </>
-              )}
               <div className="lanc-navegacao">
                 {indiceAluno > 0 && (
                   <button className="btn btn-fantasma" onClick={() => irPara(alunos[indiceAluno - 1].id)}>
@@ -329,12 +357,8 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
               {mensagem?.texto}
             </p>
             <p className="atalhos">
-              No teclado:{' '}
-              {letras.map((l) => (
-                <kbd key={l}>{l}</kbd>
-              ))}{' '}
-              ou <kbd>1</kbd> a <kbd>{caderno.numAlternativas}</kbd> marca e avança · <kbd>espaço</kbd> em branco · <kbd>X</kbd> rasurada ·{' '}
-              <kbd>⌫</kbd> volta uma questão · <kbd>Enter</kbd> próximo aluno
+              No teclado: <kbd>1</kbd> a <kbd>{caderno.numAlternativas}</kbd> marca e avança · <kbd>espaço</kbd> em branco · <kbd>X</kbd>{' '}
+              rasurada · <kbd>⌫</kbd> volta uma questão · <kbd>Enter</kbd> próximo aluno
             </p>
           </section>
         )}
