@@ -17,6 +17,7 @@ export default function MinhasTurmas() {
   return (
     <>
       <Cabecalho
+        sobretitulo="Minhas turmas"
         titulo={`Olá, ${professor.nome.split(' ')[0]}`}
         subtitulo="Escolha a turma e a avaliação para lançar as respostas dos alunos ou ver os resultados."
       />

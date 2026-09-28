@@ -31,6 +31,8 @@ export const DISCIPLINAS = [
   'Religião',
 ]
 
+export const ordemDisciplina = (a: string, b: string) => DISCIPLINAS.indexOf(a) - DISCIPLINAS.indexOf(b)
+
 export function habilidadesDoAno(serie: Serie, disciplina?: string): Habilidade[] {
   return HABILIDADES.filter((h) => h.anos.includes(serie) && (!disciplina || h.componente === disciplina))
 }

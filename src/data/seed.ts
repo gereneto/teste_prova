@@ -25,7 +25,7 @@ import { habilidadesDoAno } from './bncc'
 import { NOMES_ADULTOS, NOMES_MENINAS, NOMES_MENINOS, SOBRENOMES } from './nomes'
 
 /** Mude quando o formato dos dados mudar: o navegador descarta o que tinha salvo e recria os exemplos. */
-export const VERSAO_DADOS = 1
+export const VERSAO_DADOS = 2
 
 const ANO_LETIVO = 2026
 const SEMENTE = 20260928
@@ -39,15 +39,17 @@ interface ColegioBase {
   turmasPorAno: [number, number, number, number, number]
   /** Deslocamento da proficiência média dos alunos, para os colégios não saírem todos iguais. */
   efeito: number
+  /** Parte dos alunos que entrou no colégio neste ano letivo. */
+  novos: number
 }
 
 // 5 colégios, 50 turmas e cerca de 800 alunos, como na estimativa da primeira aplicação.
 const COLEGIOS: ColegioBase[] = [
-  { slug: 'monte-verde', nome: 'Colégio Monte Verde', cidade: 'Ribeirão Preto', uf: 'SP', ddd: '16', turmasPorAno: [3, 3, 3, 3, 3], efeito: 0.35 },
-  { slug: 'horizonte', nome: 'Colégio Horizonte', cidade: 'Uberlândia', uf: 'MG', ddd: '34', turmasPorAno: [3, 3, 2, 2, 2], efeito: 0.15 },
-  { slug: 'aurora', nome: 'Colégio Aurora', cidade: 'Londrina', uf: 'PR', ddd: '43', turmasPorAno: [2, 2, 2, 2, 2], efeito: 0 },
-  { slug: 'vila-nova', nome: 'Colégio Vila Nova', cidade: 'Goiânia', uf: 'GO', ddd: '62', turmasPorAno: [2, 2, 2, 1, 1], efeito: -0.15 },
-  { slug: 'recanto', nome: 'Escola Recanto do Saber', cidade: 'Feira de Santana', uf: 'BA', ddd: '75', turmasPorAno: [1, 1, 1, 1, 1], efeito: -0.3 },
+  { slug: 'monte-verde', nome: 'Colégio Monte Verde', cidade: 'Ribeirão Preto', uf: 'SP', ddd: '16', turmasPorAno: [3, 3, 3, 3, 3], efeito: 0.35, novos: 0.12 },
+  { slug: 'horizonte', nome: 'Colégio Horizonte', cidade: 'Uberlândia', uf: 'MG', ddd: '34', turmasPorAno: [3, 3, 2, 2, 2], efeito: 0.15, novos: 0.15 },
+  { slug: 'aurora', nome: 'Colégio Aurora', cidade: 'Londrina', uf: 'PR', ddd: '43', turmasPorAno: [2, 2, 2, 2, 2], efeito: 0, novos: 0.18 },
+  { slug: 'vila-nova', nome: 'Colégio Vila Nova', cidade: 'Goiânia', uf: 'GO', ddd: '62', turmasPorAno: [2, 2, 2, 1, 1], efeito: -0.15, novos: 0.2 },
+  { slug: 'recanto', nome: 'Escola Recanto do Saber', cidade: 'Feira de Santana', uf: 'BA', ddd: '75', turmasPorAno: [1, 1, 1, 1, 1], efeito: -0.3, novos: 0.24 },
 ]
 
 const AVALIACOES: Avaliacao[] = [
@@ -152,8 +154,10 @@ export function gerarDadosExemplo(): Db {
         while (nomes.size < total) nomes.add(nomeCrianca(rng))
         ;[...nomes].sort(compararTexto).forEach((nome, indice) => {
           const id = `alu-${sufixo}-${String(indice + 1).padStart(2, '0')}`
-          alunos.push({ id, turmaId: `tur-${sufixo}`, nome, numero: indice + 1, ativo: true })
-          proficiencia.set(id, base.efeito + efeitoTurma + rng.normal(0, 0.85))
+          const anoIngresso = sortearIngresso(rng, serie, base.novos)
+          alunos.push({ id, turmaId: `tur-${sufixo}`, nome, numero: indice + 1, anoIngresso, ativo: true })
+          const efeitoTempo = efeitoDoTempo(ANO_LETIVO - anoIngresso + 1)
+          proficiencia.set(id, base.efeito + efeitoTurma + efeitoTempo + rng.normal(0, 0.85))
           if (rng.num() < 0.012) fazProvaAdaptada.add(id)
         })
       }
@@ -265,6 +269,29 @@ function nomeCrianca(rng: Aleatorio): string {
   let segundo = rng.escolher(SOBRENOMES)
   while (segundo === sobrenome) segundo = rng.escolher(SOBRENOMES)
   return `${primeiro} ${sobrenome} ${segundo}`
+}
+
+/**
+ * Ano de entrada no colégio. Parte dos alunos é nova (entrou neste ano letivo); os demais vieram da
+ * Educação Infantil do próprio colégio, entraram no 1º ano ou chegaram num ano intermediário.
+ */
+function sortearIngresso(rng: Aleatorio, serie: Serie, taxaNovos: number): number {
+  if (rng.num() < taxaNovos) return ANO_LETIVO
+  const entradaNoPrimeiroAno = ANO_LETIVO - (serie - 1)
+  const sorteio = rng.num()
+  if (serie === 1 || sorteio < 0.45) return entradaNoPrimeiroAno - rng.inteiro(1, 3)
+  if (sorteio < 0.75 || entradaNoPrimeiroAno + 1 > ANO_LETIVO - 1) return entradaNoPrimeiroAno
+  return rng.inteiro(entradaNoPrimeiroAno + 1, ANO_LETIVO - 1)
+}
+
+/**
+ * Nos dados fictícios, quem está há menos tempo no colégio vai um pouco pior, para a comparação
+ * entre novos e antigos ter o que mostrar. Não é um resultado real.
+ */
+function efeitoDoTempo(anosNoColegio: number): number {
+  if (anosNoColegio <= 1) return -0.3
+  if (anosNoColegio === 2) return -0.1
+  return Math.min(0.15, 0.05 * (anosNoColegio - 2))
 }
 
 /** Modelo logístico simples: quanto maior a proficiência, maior a chance de acertar. */

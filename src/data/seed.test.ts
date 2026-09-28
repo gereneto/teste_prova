@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analisarQuestoes, coletarResultados, progressoDe } from '../lib/estatisticas'
+import { analisarQuestoes, coletarResultados, mediaPct, progressoDe, separarPorIngresso } from '../lib/estatisticas'
 import { buscarHabilidade } from './bncc'
 import { gerarDadosExemplo } from './seed'
 
@@ -28,6 +28,24 @@ describe('dados de exemplo', () => {
       const numeros = db.alunos.filter((a) => a.turmaId === turma.id).map((a) => a.numero)
       expect(numeros).toEqual(numeros.map((_, i) => i + 1))
     }
+  })
+
+  it('registram o ano de entrada de cada aluno, com parte deles novos no colégio', () => {
+    const turmas = new Map(db.turmas.map((t) => [t.id, t]))
+    for (const aluno of db.alunos) {
+      const turma = turmas.get(aluno.turmaId)!
+      expect(aluno.anoIngresso).not.toBeNull()
+      expect(aluno.anoIngresso!).toBeLessThanOrEqual(turma.anoLetivo)
+      expect(aluno.anoIngresso!).toBeGreaterThanOrEqual(turma.anoLetivo - (turma.serie - 1) - 3)
+    }
+    const parteNovos = db.alunos.filter((a) => a.anoIngresso === 2026).length / db.alunos.length
+    expect(parteNovos).toBeGreaterThan(0.08)
+    expect(parteNovos).toBeLessThan(0.3)
+  })
+
+  it('simulam alunos novos um pouco abaixo dos antigos', () => {
+    const { novos, antigos } = separarPorIngresso(coletarResultados(db, { avaliacaoId: 'av-2026-2bim' }))
+    expect(mediaPct(novos)!).toBeLessThan(mediaPct(antigos)!)
   })
 
   it('classificam cada questão com uma habilidade do ano e da disciplina certos', () => {

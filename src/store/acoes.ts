@@ -100,35 +100,62 @@ export function removerTurma(id: Id) {
 
 // Alunos
 
+export interface DadosAluno {
+  nome: string
+  anoIngresso: number | null
+}
+
+const ANO_MINIMO_INGRESSO = 1990
+
 /**
- * Lê nomes colados de uma planilha ou lista: um por linha. Ignora números de chamada
- * e colunas extras ("12  Maria Souza", "Maria Souza;3º ano") e linhas de cabeçalho.
+ * Lê alunos colados de uma planilha ou lista: um por linha, com o ano de entrada no colégio
+ * opcional em outra coluna ("Maria Souza;2023") ou no fim ("Maria Souza 2023"). Ignora números
+ * de chamada, colunas extras e linhas de cabeçalho.
  */
-export function lerListaDeNomes(texto: string): string[] {
-  const nomes: string[] = []
+export function lerListaDeAlunos(texto: string, anoMaximo: number): DadosAluno[] {
+  const ehAno = (valor: string) => /^\d{4}$/.test(valor) && Number(valor) >= ANO_MINIMO_INGRESSO && Number(valor) <= anoMaximo
+  const alunos: DadosAluno[] = []
   for (const linha of texto.split(/\r?\n/)) {
     const celulas = linha.split(/\t|;/).map((c) => c.trim())
-    const celula = celulas.find((c) => /\p{L}/u.test(c)) ?? ''
-    const nome = celula
+    const celulaAno = celulas.find(ehAno)
+    let celulaNome = celulas.find((c) => /\p{L}/u.test(c)) ?? ''
+    let anoIngresso = celulaAno ? Number(celulaAno) : null
+    const anoNoFim = celulaNome.match(/\s(\d{4})$/)
+    if (anoNoFim && ehAno(anoNoFim[1])) {
+      anoIngresso ??= Number(anoNoFim[1])
+      celulaNome = celulaNome.slice(0, anoNoFim.index)
+    }
+    const nome = celulaNome
       .replace(/^\d+\s*[.)\-–]?\s*/, '')
       .replace(/\s+/g, ' ')
       .trim()
-    if (nome && !/^(nome|aluno|aluna|nome do aluno|estudante)s?$/i.test(nome)) nomes.push(nome)
+    if (nome && !/^(nome|aluno|aluna|nome do aluno|estudante)s?$/i.test(nome)) alunos.push({ nome, anoIngresso })
   }
-  return nomes
+  return alunos
 }
 
-export function adicionarAlunos(turmaId: Id, nomes: string[]) {
+export function adicionarAlunos(turmaId: Id, novos: DadosAluno[]) {
   atualizar((db) => {
     let numero = Math.max(0, ...db.alunos.filter((a) => a.turmaId === turmaId && a.ativo).map((a) => a.numero))
-    for (const nome of nomes) db.alunos.push({ id: novoId('alu'), turmaId, nome, numero: ++numero, ativo: true })
+    for (const { nome, anoIngresso } of novos) {
+      db.alunos.push({ id: novoId('alu'), turmaId, nome, numero: ++numero, anoIngresso, ativo: true })
+    }
   })
 }
 
-export function editarAluno(id: Id, nome: string) {
+export function editarAluno(id: Id, dados: DadosAluno) {
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
-    if (aluno) aluno.nome = nome
+    if (aluno) Object.assign(aluno, dados)
+  })
+}
+
+/** Preenche o ano de entrada de todos os alunos ativos da turma que ainda estão sem ele. */
+export function definirIngressoDosSemAno(turmaId: Id, anoIngresso: number) {
+  atualizar((db) => {
+    for (const aluno of db.alunos) {
+      if (aluno.turmaId === turmaId && aluno.ativo && aluno.anoIngresso == null) aluno.anoIngresso = anoIngresso
+    }
   })
 }
 

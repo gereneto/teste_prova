@@ -5,8 +5,10 @@ import { contarFaixas, faixaDe, NOMES_FAIXAS, type ResultadoAluno, type StatusLa
 import { pct } from '../lib/formato'
 import type { Config } from '../types'
 
+/** Cabeçalho de página no formato SectionHeading do design system: rótulo, título e subtítulo. */
 export function Cabecalho(props: {
   titulo: ReactNode
+  sobretitulo?: ReactNode
   subtitulo?: ReactNode
   voltar?: { para: string; rotulo: string }
   acoes?: ReactNode
@@ -20,6 +22,7 @@ export function Cabecalho(props: {
       )}
       <div className="cabecalho-linha">
         <div>
+          {props.sobretitulo && <p className="sobretitulo">{props.sobretitulo}</p>}
           <h1>{props.titulo}</h1>
           {props.subtitulo && <p className="cabecalho-sub">{props.subtitulo}</p>}
         </div>
@@ -46,17 +49,18 @@ export function Cartao(props: { titulo?: ReactNode; sub?: ReactNode; acoes?: Rea
   )
 }
 
+/** Indicador no formato Stat do design system: o número em destaque e o rótulo embaixo. */
 export function Kpi(props: { rotulo: string; valor: ReactNode; detalhe?: ReactNode }) {
   return (
     <div className="kpi">
-      <div className="kpi-rotulo">{props.rotulo}</div>
       <div className="kpi-valor">{props.valor}</div>
+      <div className="kpi-rotulo">{props.rotulo}</div>
       {props.detalhe && <div className="kpi-detalhe">{props.detalhe}</div>}
     </div>
   )
 }
 
-export type Tom = 'neutro' | 'info' | 'sucesso' | 'atencao' | 'perigo'
+export type Tom = 'neutro' | 'info' | 'sucesso' | 'atencao' | 'perigo' | 'ambar' | 'marca'
 
 export function Selo(props: { tom?: Tom; children: ReactNode; titulo?: string }) {
   return (
@@ -68,7 +72,7 @@ export function Selo(props: { tom?: Tom; children: ReactNode; titulo?: string })
 
 const STATUS: Record<StatusLancamento, { rotulo: string; tom: Tom }> = {
   nao_iniciado: { rotulo: 'Não iniciado', tom: 'neutro' },
-  em_andamento: { rotulo: 'Em andamento', tom: 'atencao' },
+  em_andamento: { rotulo: 'Em andamento', tom: 'ambar' },
   concluido: { rotulo: 'Concluído', tom: 'sucesso' },
 }
 
@@ -127,6 +131,21 @@ export function Barras({ itens, config }: { itens: ItemBarra[]; config?: Config 
         </div>
       ))}
     </div>
+  )
+}
+
+/** Barra curta para células de tabela. */
+export function MiniBarra({ valor, config }: { valor: number; config?: Config }) {
+  return (
+    <span className="mini-barra">
+      <span className="mini-barra-trilho">
+        <span
+          className={`mini-barra-preench ${config ? `faixa-${faixaDe(valor, config)}` : ''}`}
+          style={{ width: `${Math.max(2, Math.min(100, valor))}%` }}
+        />
+      </span>
+      <span className="mini-barra-valor">{pct(valor)}</span>
+    </span>
   )
 }
 

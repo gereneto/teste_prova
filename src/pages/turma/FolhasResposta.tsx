@@ -1,6 +1,7 @@
-import { ArrowLeft, Printer, Sun } from 'lucide-react'
+import { ArrowLeft, Printer } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
+import logoSolar from '../../assets/marca/logo-solar.png'
 import { Vazio } from '../../components/ui'
 import { turmaNome } from '../../lib/formato'
 import { LETRAS, type Aluno, type Avaliacao, type Caderno, type Colegio, type Turma } from '../../types'
@@ -70,9 +71,8 @@ function Folha(props: { aluno: Aluno | null; caderno: Caderno; avaliacao: Avalia
       <span className="folha-canto folha-canto-id" aria-hidden />
 
       <header className="folha-cabecalho">
-        <div className="folha-marca">
-          <Sun size={18} aria-hidden /> Prova Solar · Folha de respostas
-        </div>
+        <img src={logoSolar} alt="Solar Colégios" className="folha-logo" />
+        <div className="folha-marca">Prova Solar · Folha de respostas</div>
         <div className="folha-avaliacao">{avaliacao.titulo}</div>
         <div>
           {colegio.nome} · {turmaNome(turma)} · {turma.turno}

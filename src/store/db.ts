@@ -2,6 +2,7 @@ import { produce, type Draft } from 'immer'
 import { useSyncExternalStore } from 'react'
 import { gerarDadosExemplo, VERSAO_DADOS } from '../data/seed'
 import type { Db } from '../types'
+import { apagarTodosPdfs } from './arquivos'
 
 // Nesta versão de teste, tudo fica no localStorage do navegador. Quando houver servidor,
 // só este arquivo e acoes.ts precisam mudar: as telas continuam chamando as mesmas funções.
@@ -21,6 +22,11 @@ function carregar(): Db {
     if (bruto) {
       const salvo = JSON.parse(bruto) as Db
       if (salvo.versao === VERSAO_DADOS) return salvo
+      // Dados num formato antigo: voltam aos de exemplo, e os PDFs enviados para os cadernos antigos saem junto.
+      const novo = gerarDadosExemplo()
+      localStorage.setItem(CHAVE, JSON.stringify(novo))
+      apagarTodosPdfs().catch(() => {})
+      return novo
     }
   } catch {
     // Sem acesso ao localStorage (modo privado, cota cheia): segue só com os dados em memória.

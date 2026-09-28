@@ -34,7 +34,7 @@ export default function Configuracoes() {
 
   return (
     <>
-      <Cabecalho titulo="Configurações" />
+      <Cabecalho sobretitulo="Equipe Solar" titulo="Configurações" />
 
       <Cartao titulo="Faixas de desempenho" sub="Classificam cada aluno pelo percentual de acertos. Valem para professores, coordenações e Solar.">
         <form className="form" onSubmit={salvar} noValidate>

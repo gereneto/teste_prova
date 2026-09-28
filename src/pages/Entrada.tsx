@@ -1,7 +1,8 @@
-import { ArrowLeft, ArrowRight, ChevronRight, ClipboardList, RotateCcw, Search, Sun, Users, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Building2, ChevronRight, ClipboardList, RotateCcw, Search, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { descreverPerfil, INICIO_DO_PAPEL, Marca } from '../components/Layout'
+import logoBranco from '../assets/marca/logo-solar-branco.png'
+import { descreverPerfil, INICIO_DO_PAPEL } from '../components/Layout'
 import { turmasDoColegio, turmasDoProfessor } from '../lib/consultas'
 import { compararTexto, normalizar, plural, turmaNome } from '../lib/formato'
 import { restaurarDadosDeExemplo } from '../store/acoes'
@@ -14,7 +15,7 @@ type Papel = Perfil['papel']
 const OPCOES: { papel: Papel; titulo: string; texto: string; Icone: LucideIcon }[] = [
   { papel: 'professor', titulo: 'Professor(a)', texto: 'Lança as respostas dos alunos e vê os resultados das suas turmas.', Icone: ClipboardList },
   { papel: 'coordenacao', titulo: 'Coordenação', texto: 'Cadastra turmas, professores e alunos e acompanha o colégio inteiro.', Icone: Users },
-  { papel: 'solar', titulo: 'Equipe Solar', texto: 'Cadastra colégios e provas e vê as estatísticas de toda a rede.', Icone: Sun },
+  { papel: 'solar', titulo: 'Equipe Solar', texto: 'Cadastra colégios e provas e acompanha os resultados de toda a Rede.', Icone: Building2 },
 ]
 
 export default function Entrada() {
@@ -74,99 +75,107 @@ export default function Entrada() {
 
   return (
     <div className="entrada">
-      <div className="entrada-topo">
-        <Marca />
-      </div>
+      <section className="entrada-hero">
+        <div className="entrada-hero-conteudo">
+          <img src={logoBranco} alt="Solar Colégios" className="entrada-hero-logo" />
+          <h1>Prova Solar</h1>
+          <p className="entrada-hero-sub">Lançamento e resultados das avaliações da Rede</p>
+          <span className="selo selo-ambar">Versão de teste</span>
+        </div>
+      </section>
 
-      {!papel && (
-        <section className="entrada-passo">
-          <h1>Quem é você?</h1>
-          <p className="entrada-sub">Nesta versão de teste não há senha: escolha um perfil para navegar.</p>
-          {perfilAtual && descricaoAtual && (
-            <button className="entrada-continuar" onClick={() => navigate(INICIO_DO_PAPEL[perfilAtual.papel])}>
-              Continuar como <strong>{descricaoAtual}</strong> <ArrowRight size={16} aria-hidden />
-            </button>
-          )}
-          <div className="entrada-opcoes">
-            {OPCOES.map(({ papel: p, titulo, texto, Icone }) => (
-              <button key={p} className="entrada-opcao" onClick={() => escolherPapel(p)}>
-                <span className="entrada-icone">
-                  <Icone size={26} aria-hidden />
-                </span>
-                <span className="entrada-opcao-titulo">{titulo}</span>
-                <span className="entrada-opcao-texto">{texto}</span>
+      <main className="entrada-corpo">
+        {!papel && (
+          <section className="entrada-passo">
+            <p className="sobretitulo">Entrada</p>
+            <h2>Quem é você?</h2>
+            <p className="entrada-sub">Nesta versão de teste não há senha: escolha um perfil para navegar.</p>
+            {perfilAtual && descricaoAtual && (
+              <button className="btn btn-secundario entrada-continuar" onClick={() => navigate(INICIO_DO_PAPEL[perfilAtual.papel])}>
+                Continuar como {descricaoAtual} <ArrowRight size={16} aria-hidden />
               </button>
-            ))}
-          </div>
-        </section>
-      )}
+            )}
+            <div className="entrada-opcoes">
+              {OPCOES.map(({ papel: p, titulo, texto, Icone }) => (
+                <button key={p} className="entrada-opcao" onClick={() => escolherPapel(p)}>
+                  <span className="entrada-icone">
+                    <Icone size={24} aria-hidden />
+                  </span>
+                  <span className="entrada-opcao-titulo">{titulo}</span>
+                  <span className="entrada-opcao-texto">{texto}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
-      {papel && !colegio && (
-        <section className="entrada-passo">
-          <button className="btn btn-fantasma btn-pequeno" onClick={voltar}>
-            <ArrowLeft size={15} aria-hidden /> Voltar
-          </button>
-          <h1>De qual colégio você é?</h1>
-          <p className="entrada-sub">Na versão final, o colégio já vem do seu login.</p>
-          <ul className="entrada-lista">
-            {[...db.colegios]
-              .sort((a, b) => compararTexto(a.nome, b.nome))
-              .map((c) => (
-                <li key={c.id}>
-                  <button className="entrada-item" onClick={() => escolherColegio(c.id)}>
+        {papel && !colegio && (
+          <section className="entrada-passo">
+            <button className="btn btn-fantasma btn-pequeno" onClick={voltar}>
+              <ArrowLeft size={15} aria-hidden /> Voltar
+            </button>
+            <h2>De qual colégio você é?</h2>
+            <p className="entrada-sub">Na versão final, o colégio já vem do seu login.</p>
+            <ul className="entrada-lista">
+              {[...db.colegios]
+                .sort((a, b) => compararTexto(a.nome, b.nome))
+                .map((c) => (
+                  <li key={c.id}>
+                    <button className="entrada-item" onClick={() => escolherColegio(c.id)}>
+                      <span>
+                        <span className="entrada-item-titulo">{c.nome}</span>
+                        <span className="entrada-item-sub">
+                          {c.cidade}/{c.uf} · {plural(turmasDoColegio(db, c.id).length, 'turma', 'turmas')}
+                        </span>
+                      </span>
+                      <ChevronRight size={20} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
+
+        {papel === 'professor' && colegio && (
+          <section className="entrada-passo">
+            <button className="btn btn-fantasma btn-pequeno" onClick={voltar}>
+              <ArrowLeft size={15} aria-hidden /> Voltar
+            </button>
+            <h2>Qual é o seu nome?</h2>
+            <p className="entrada-sub">Professores do {colegio.nome}. Na versão final, isso também vem do login.</p>
+            <label className="busca">
+              <Search size={18} aria-hidden />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pelo nome" aria-label="Buscar professor pelo nome" autoFocus />
+            </label>
+            <ul className="entrada-lista">
+              {professores.map(({ professor, turmas }) => (
+                <li key={professor.id}>
+                  <button className="entrada-item" onClick={() => entrar({ papel: 'professor', colegioId: colegio.id, professorId: professor.id })}>
                     <span>
-                      <span className="entrada-item-titulo">{c.nome}</span>
+                      <span className="entrada-item-titulo">{professor.nome}</span>
                       <span className="entrada-item-sub">
-                        {c.cidade}/{c.uf} · {plural(turmasDoColegio(db, c.id).length, 'turma', 'turmas')}
+                        {turmas.length ? turmas.map((t) => `${turmaNome(t)} · ${t.turno}`).join(', ') : 'Sem turma'}
                       </span>
                     </span>
-                    <ChevronRight size={18} aria-hidden />
+                    <ChevronRight size={20} aria-hidden />
                   </button>
                 </li>
               ))}
-          </ul>
-        </section>
-      )}
+              {!professores.length && <li className="texto-2">Ninguém com esse nome.</li>}
+            </ul>
+          </section>
+        )}
 
-      {papel === 'professor' && colegio && (
-        <section className="entrada-passo">
-          <button className="btn btn-fantasma btn-pequeno" onClick={voltar}>
-            <ArrowLeft size={15} aria-hidden /> Voltar
+        <footer className="entrada-rodape">
+          <p>
+            Versão de teste, com dados fictícios. O que você lançar fica guardado só neste navegador: outras pessoas não veem as suas
+            alterações.
+          </p>
+          <button className="btn btn-pequeno btn-fantasma" onClick={restaurar}>
+            <RotateCcw size={15} aria-hidden /> Restaurar dados de exemplo
           </button>
-          <h1>Qual é o seu nome?</h1>
-          <p className="entrada-sub">Professores do {colegio.nome}. Na versão final, isso também vem do login.</p>
-          <label className="busca">
-            <Search size={16} aria-hidden />
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pelo nome" aria-label="Buscar professor pelo nome" autoFocus />
-          </label>
-          <ul className="entrada-lista">
-            {professores.map(({ professor, turmas }) => (
-              <li key={professor.id}>
-                <button className="entrada-item" onClick={() => entrar({ papel: 'professor', colegioId: colegio.id, professorId: professor.id })}>
-                  <span>
-                    <span className="entrada-item-titulo">{professor.nome}</span>
-                    <span className="entrada-item-sub">
-                      {turmas.length ? turmas.map((t) => `${turmaNome(t)} · ${t.turno}`).join(', ') : 'Sem turma'}
-                    </span>
-                  </span>
-                  <ChevronRight size={18} aria-hidden />
-                </button>
-              </li>
-            ))}
-            {!professores.length && <li className="texto-2">Ninguém com esse nome.</li>}
-          </ul>
-        </section>
-      )}
-
-      <footer className="entrada-rodape">
-        <p>
-          Versão de teste, com dados fictícios. O que você lançar fica guardado só neste navegador: outras pessoas não veem as suas
-          alterações.
-        </p>
-        <button className="btn btn-pequeno btn-fantasma" onClick={restaurar}>
-          <RotateCcw size={15} aria-hidden /> Restaurar dados de exemplo
-        </button>
-      </footer>
+        </footer>
+      </main>
     </div>
   )
 }

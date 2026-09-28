@@ -2,14 +2,15 @@ import { ChartColumn, ClipboardList } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { descreverPeriodo } from '../../components/LinhaAvaliacao'
+import { ComparacaoIngresso } from '../../components/ComparacaoIngresso'
 import { BarraFaixas, Barras, Cabecalho, Cartao, Kpi, Progresso, SeloFaixa, SeloStatus, Vazio } from '../../components/ui'
 import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDaSerie, nomesProfessores, turmasDoColegio } from '../../lib/consultas'
 import { agruparPor, avaliados, coletarResultados, desempenhoPor, faixaDe, mediaPct, progressoDe } from '../../lib/estatisticas'
 import { pct, serieNome, turmaNome } from '../../lib/formato'
+import { ordemDisciplina } from '../../data/bncc'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
 import { SERIES } from '../../types'
-import { ordemDisciplina } from '../turma/ResultadosTurma'
 
 export default function PainelEscola() {
   const db = useDb()
@@ -40,7 +41,12 @@ export default function PainelEscola() {
   )
 
   const cabecalho = (
-    <Cabecalho titulo={colegio.nome} subtitulo={`${colegio.cidade}/${colegio.uf} · Coordenação: ${colegio.coordenacao.nome}`} acoes={seletor} />
+    <Cabecalho
+      sobretitulo="Coordenação"
+      titulo={colegio.nome}
+      subtitulo={`${colegio.cidade}/${colegio.uf} · ${colegio.coordenacao.nome}`}
+      acoes={seletor}
+    />
   )
   if (!avaliacao) {
     return (
@@ -153,6 +159,8 @@ export default function PainelEscola() {
           )}
         </Cartao>
       </div>
+
+      <ComparacaoIngresso resultados={resultados} config={config} />
 
       <Cartao titulo="Desempenho por disciplina" sub="Percentual de acertos de cada turma. A cor indica a faixa de desempenho.">
         <div className="tabela-rolagem">

@@ -18,13 +18,18 @@ export default function TurmasEscola() {
   if (!colegio) return null
 
   const turmas = turmasDoColegio(db, colegio.id)
-  const alunosAtivos = (turmaId: Id) => db.alunos.filter((a) => a.turmaId === turmaId && a.ativo).length
+  const descreverAlunos = (turma: (typeof turmas)[number]) => {
+    const lista = db.alunos.filter((a) => a.turmaId === turma.id && a.ativo)
+    const novos = lista.filter((a) => a.anoIngresso === turma.anoLetivo).length
+    return `${lista.length} alunos${novos ? ` · ${novos} ${novos === 1 ? 'novo' : 'novos'}` : ''}`
+  }
 
   return (
     <>
       <Cabecalho
+        sobretitulo={colegio.nome}
         titulo="Turmas e alunos"
-        subtitulo={`${colegio.nome} · ${turmas.length} turmas do 1º ao 5º ano`}
+        subtitulo={`${turmas.length} turmas do 1º ao 5º ano`}
         acoes={
           !criando && (
             <button className="btn btn-primario" onClick={() => setCriando(true)}>
@@ -57,7 +62,7 @@ export default function TurmasEscola() {
                     <span className="lista-link-titulo">{turmaNome(turma)}</span>
                     <span className="texto-2">{turma.turno}</span>
                     <span className="texto-2">{nomesProfessores(db, turma)}</span>
-                    <span className="texto-2">{alunosAtivos(turma.id)} alunos</span>
+                    <span className="texto-2">{descreverAlunos(turma)}</span>
                     <ChevronRight size={18} aria-hidden />
                   </Link>
                 </li>

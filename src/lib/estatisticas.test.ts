@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Aluno, Caderno, Colegio, Letra, Questao, Turma } from '../types'
 import {
+  agruparPorAnoDeIngresso,
   analisarQuestoes,
   contarFaixas,
   correlacao,
@@ -9,6 +10,7 @@ import {
   faixaDe,
   progressoDaTurma,
   respostaCompleta,
+  separarPorIngresso,
   type ResultadoAluno,
 } from './estatisticas'
 
@@ -30,7 +32,7 @@ const caderno = (questoes: Questao[]): Caderno => ({
   pdf: null,
 })
 
-const aluno = (id: string): Aluno => ({ id, turmaId: 't', nome: id, numero: 1, ativo: true })
+const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', nome: id, numero: 1, anoIngresso, ativo: true })
 const turma: Turma = { id: 't', colegioId: 'c', anoLetivo: 2026, serie: 3, nome: 'A', turno: 'Manhã', professorIds: [] }
 const colegio: Colegio = { id: 'c', nome: 'C', cidade: '', uf: '', coordenacao: { nome: '', email: '', telefone: '' } }
 
@@ -159,5 +161,28 @@ describe('desempenhoPor', () => {
     const porDisciplina = Object.fromEntries(desempenhoPor(lista, (x) => x.disciplina).map((d) => [d.chave, d]))
     expect(porDisciplina['Português']).toMatchObject({ acertos: 3, respostas: 4, pct: 75, questoes: 2 })
     expect(porDisciplina['Matemática']).toMatchObject({ acertos: 1, respostas: 2, pct: 50, questoes: 1 })
+  })
+})
+
+describe('alunos novos e antigos', () => {
+  const cad = caderno([q('A'), q('B')])
+  const comIngresso = (id: string, anoIngresso: number | null): ResultadoAluno => ({ ...resultado(cad, id, 'AB'), aluno: aluno(id, anoIngresso) })
+
+  it('separa pelo ano de entrada em relação ao ano letivo da turma', () => {
+    const grupos = separarPorIngresso([comIngresso('a', 2026), comIngresso('b', 2024), comIngresso('c', null)])
+    expect(grupos.novos.map((r) => r.aluno.id)).toEqual(['a'])
+    expect(grupos.antigos.map((r) => r.aluno.id)).toEqual(['b'])
+    expect(grupos.sem_ano.map((r) => r.aluno.id)).toEqual(['c'])
+  })
+
+  it('agrupa por ano de entrada e junta os que entraram há mais tempo', () => {
+    const lista = [2026, 2025, 2023, 2022, 2019, null].map((ano, i) => comIngresso(`a${i}`, ano))
+    expect(agruparPorAnoDeIngresso(lista).map((g) => [g.rotulo, g.resultados.length])).toEqual([
+      ['2026 (novos)', 1],
+      ['2025', 1],
+      ['2024', 0],
+      ['2023', 1],
+      ['Até 2022', 2],
+    ])
   })
 })

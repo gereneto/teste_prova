@@ -29,8 +29,9 @@ export default function ProfessoresEscola() {
   return (
     <>
       <Cabecalho
+        sobretitulo={colegio.nome}
         titulo="Professores"
-        subtitulo={`${colegio.nome} · para associar um professor a uma turma, edite a turma em “Turmas e alunos”`}
+        subtitulo="Para associar um professor a uma turma, edite a turma em “Turmas e Alunos”."
         acoes={
           !criando && (
             <button className="btn btn-primario" onClick={() => setCriando(true)}>

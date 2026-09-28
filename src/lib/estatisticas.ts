@@ -323,3 +323,44 @@ export function desempenhoPor(resultados: ResultadoAluno[], chaveDa: (q: Questao
     questoes: v.questoes.size,
   }))
 }
+
+export type GrupoIngresso = 'novos' | 'antigos' | 'sem_ano'
+
+/** Novos são os alunos que entraram no colégio no ano letivo da avaliação. */
+export function grupoIngresso(aluno: Aluno, anoLetivo: number): GrupoIngresso {
+  if (aluno.anoIngresso == null) return 'sem_ano'
+  return aluno.anoIngresso >= anoLetivo ? 'novos' : 'antigos'
+}
+
+export function separarPorIngresso(resultados: ResultadoAluno[]): Record<GrupoIngresso, ResultadoAluno[]> {
+  const grupos: Record<GrupoIngresso, ResultadoAluno[]> = { novos: [], antigos: [], sem_ano: [] }
+  for (const r of resultados) grupos[grupoIngresso(r.aluno, r.turma.anoLetivo)].push(r)
+  return grupos
+}
+
+export interface GrupoAnoIngresso {
+  chave: string
+  rotulo: string
+  resultados: ResultadoAluno[]
+}
+
+/** Agrupa pelo ano de entrada: os novos, cada um dos anos anteriores e, por fim, quem entrou antes deles. */
+export function agruparPorAnoDeIngresso(resultados: ResultadoAluno[], anosSeparados = 3): GrupoAnoIngresso[] {
+  const anoLetivo = resultados[0]?.turma.anoLetivo
+  if (anoLetivo == null) return []
+  const grupos: GrupoAnoIngresso[] = [
+    { chave: 'novos', rotulo: `${anoLetivo} (novos)`, resultados: [] },
+    ...Array.from({ length: anosSeparados }, (_, i) => ({
+      chave: String(anoLetivo - 1 - i),
+      rotulo: String(anoLetivo - 1 - i),
+      resultados: [] as ResultadoAluno[],
+    })),
+    { chave: 'antes', rotulo: `Até ${anoLetivo - 1 - anosSeparados}`, resultados: [] },
+  ]
+  for (const r of resultados) {
+    if (r.aluno.anoIngresso == null) continue
+    const anosAntes = r.turma.anoLetivo - r.aluno.anoIngresso
+    grupos[Math.max(0, Math.min(anosAntes, anosSeparados + 1))].resultados.push(r)
+  }
+  return grupos
+}

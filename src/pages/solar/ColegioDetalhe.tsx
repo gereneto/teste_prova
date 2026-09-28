@@ -22,6 +22,7 @@ export default function ColegioDetalhe() {
   return (
     <>
       <Cabecalho
+        sobretitulo="Colégio da Rede"
         titulo={colegio.nome}
         subtitulo={`${colegio.cidade}/${colegio.uf} · ${plural(turmas.length, 'turma', 'turmas')} · ${plural(totalAlunos, 'aluno', 'alunos')}`}
         voltar={{ para: '/solar/colegios', rotulo: 'Colégios' }}
@@ -80,6 +81,7 @@ export default function ColegioDetalhe() {
                   <th>Turno</th>
                   <th>Professor(a)</th>
                   <th className="num">Alunos</th>
+                  <th className="num">Novos no colégio</th>
                 </tr>
               </thead>
               <tbody>
@@ -89,6 +91,7 @@ export default function ColegioDetalhe() {
                     <td>{turma.turno}</td>
                     <td>{nomesProfessores(db, turma)}</td>
                     <td className="num">{alunosDa(turma.id)}</td>
+                    <td className="num">{db.alunos.filter((a) => a.turmaId === turma.id && a.ativo && a.anoIngresso === turma.anoLetivo).length}</td>
                   </tr>
                 ))}
               </tbody>

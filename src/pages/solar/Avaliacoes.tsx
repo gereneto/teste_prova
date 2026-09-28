@@ -33,6 +33,7 @@ export default function Avaliacoes() {
   return (
     <>
       <Cabecalho
+        sobretitulo="Provas"
         titulo="Avaliações"
         subtitulo="Cada avaliação tem um caderno de prova por ano, com gabarito, disciplina e habilidade de cada questão"
         acoes={

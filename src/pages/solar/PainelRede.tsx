@@ -18,7 +18,7 @@ export default function PainelRede() {
 
   return (
     <>
-      <Cabecalho titulo="Painel da rede" subtitulo="Andamento das avaliações e resultados de todos os colégios" />
+      <Cabecalho sobretitulo="Equipe Solar" titulo="Painel da rede" subtitulo="Andamento das avaliações e resultados de todos os colégios" />
 
       <div className="grade grade-kpis">
         <Kpi rotulo="Colégios" valor={db.colegios.length} />

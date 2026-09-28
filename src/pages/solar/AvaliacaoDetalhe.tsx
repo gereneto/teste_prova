@@ -51,6 +51,7 @@ export default function AvaliacaoDetalhe() {
   return (
     <>
       <Cabecalho
+        sobretitulo="Avaliação"
         titulo={avaliacao.titulo}
         subtitulo={descreverPeriodo(avaliacao)}
         voltar={{ para: '/solar/avaliacoes', rotulo: 'Avaliações' }}

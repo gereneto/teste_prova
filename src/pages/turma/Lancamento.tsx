@@ -174,8 +174,9 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
 
   const cabecalho = (
     <Cabecalho
+      sobretitulo={avaliacao.titulo}
       titulo="Lançar respostas"
-      subtitulo={`${avaliacao.titulo} · ${turmaNome(turma)} · ${colegio.nome}`}
+      subtitulo={`${turmaNome(turma)} · ${colegio.nome}`}
       voltar={{ para: base, rotulo: base === '/professor' ? 'Minhas turmas' : 'Painel do colégio' }}
       acoes={
         <>

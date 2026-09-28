@@ -1,8 +1,9 @@
 import { FileSpreadsheet, Pencil, Printer } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { Aviso, BarraFaixas, Barras, Cabecalho, Cartao, Kpi, SeloFaixa, Vazio } from '../../components/ui'
-import { buscarHabilidade, DISCIPLINAS } from '../../data/bncc'
+import { ComparacaoIngresso } from '../../components/ComparacaoIngresso'
+import { Aviso, BarraFaixas, Barras, Cabecalho, Cartao, Kpi, MiniBarra, SeloFaixa, Vazio } from '../../components/ui'
+import { buscarHabilidade, ordemDisciplina } from '../../data/bncc'
 import {
   analisarQuestoes,
   avaliados,
@@ -29,8 +30,6 @@ export default function ResultadosTurma() {
   }
   return <TelaResultados {...contexto} />
 }
-
-export const ordemDisciplina = (a: string, b: string) => DISCIPLINAS.indexOf(a) - DISCIPLINAS.indexOf(b)
 
 export function rotuloSituacao(r: ResultadoAluno): string {
   if (!r.completo) return r.situacao ? 'Lançamento incompleto' : 'Ainda não lançado'
@@ -65,12 +64,14 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
   function exportar() {
     baixarCsv(
       `resultados-${paraNomeDeArquivo(`${colegio.nome} ${turmaNome(turma)} ${avaliacao.titulo}`)}.csv`,
-      ['Nº', 'Aluno', 'Situação', 'Acertos', 'Questões válidas', '% de acertos', 'Faixa', ...caderno.questoes.map((_, i) => `Q${i + 1}`)],
+      ['Nº', 'Aluno', 'Entrou no colégio', 'Novo no colégio', 'Situação', 'Acertos', 'Questões válidas', '% de acertos', 'Faixa', ...caderno.questoes.map((_, i) => `Q${i + 1}`)],
       [...resultados]
         .sort((a, b) => a.aluno.numero - b.aluno.numero)
         .map((r) => [
           r.aluno.numero,
           r.aluno.nome,
+          r.aluno.anoIngresso,
+          r.aluno.anoIngresso == null ? '' : r.aluno.anoIngresso >= turma.anoLetivo ? 'sim' : 'não',
           rotuloSituacao(r),
           r.correcao?.acertos,
           r.correcao?.validas,
@@ -84,8 +85,9 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
   return (
     <>
       <Cabecalho
+        sobretitulo={avaliacao.titulo}
         titulo="Resultados da turma"
-        subtitulo={`${avaliacao.titulo} · ${turmaNome(turma)} · ${colegio.nome}`}
+        subtitulo={`${turmaNome(turma)} · ${colegio.nome}`}
         voltar={{ para: base, rotulo: base === '/professor' ? 'Minhas turmas' : 'Painel do colégio' }}
         acoes={
           <>
@@ -173,12 +175,14 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
               </div>
             }
           >
+            <ComparacaoIngresso resultados={resultados} config={config} compacta />
             <div className="tabela-rolagem">
               <table className="tabela">
                 <thead>
                   <tr>
                     <th className="num">Nº</th>
                     <th>Aluno</th>
+                    <th>Entrou no colégio</th>
                     <th className="num">Acertos</th>
                     <th className="num">%</th>
                     <th>Faixa</th>
@@ -189,6 +193,10 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
                     <tr key={r.aluno.id}>
                       <td className="num">{r.aluno.numero}</td>
                       <td>{r.aluno.nome}</td>
+                      <td>
+                        {r.aluno.anoIngresso ?? <span className="texto-2">—</span>}
+                        {r.aluno.anoIngresso != null && r.aluno.anoIngresso >= turma.anoLetivo && <span className="tag-novo">Novo</span>}
+                      </td>
                       {r.correcao ? (
                         <>
                           <td className="num">
@@ -243,7 +251,7 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
                         </td>
                         <td>{a.questao.anulada ? <span className="texto-2">anulada</span> : (a.questao.gabarito ?? <span className="texto-2">sem gabarito</span>)}</td>
                         <td className="coluna-barra">
-                          {a.pctAcerto != null && <MiniBarra valor={a.pctAcerto} />}
+                          {a.pctAcerto != null && <MiniBarra valor={a.pctAcerto} config={config} />}
                         </td>
                         <td>{a.erroMaisComum ? `${a.erroMaisComum.marca} · ${pct(a.erroMaisComum.pct)}` : <span className="texto-2">—</span>}</td>
                         <td className="marcacoes">
@@ -281,7 +289,7 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
                       <td className="descricao-habilidade">{buscarHabilidade(d.chave)?.descricao ?? '—'}</td>
                       <td className="num">{d.questoes}</td>
                       <td className="coluna-barra">
-                        <MiniBarra valor={d.pct} />
+                        <MiniBarra valor={d.pct} config={config} />
                       </td>
                     </tr>
                   ))}
@@ -292,16 +300,5 @@ function TelaResultados({ db, caderno, avaliacao, turma, colegio, lancamento, al
         </>
       )}
     </>
-  )
-}
-
-export function MiniBarra({ valor }: { valor: number }) {
-  return (
-    <span className="mini-barra">
-      <span className="mini-barra-trilho">
-        <span className="mini-barra-preench" style={{ width: `${Math.max(2, Math.min(100, valor))}%` }} />
-      </span>
-      <span className="mini-barra-valor">{pct(valor)}</span>
-    </span>
   )
 }

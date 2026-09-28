@@ -51,6 +51,8 @@ export interface Aluno {
   turmaId: Id
   nome: string
   numero: number
+  /** Ano em que entrou no colégio (null = não informado). Separa alunos novos e antigos nos resultados. */
+  anoIngresso: number | null
   ativo: boolean
 }
 

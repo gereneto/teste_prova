@@ -18,6 +18,7 @@ export default function Colegios() {
   return (
     <>
       <Cabecalho
+        sobretitulo="Rede"
         titulo="Colégios"
         subtitulo="Cada colégio tem uma coordenação, que cadastra as próprias turmas, professores e alunos"
         acoes={

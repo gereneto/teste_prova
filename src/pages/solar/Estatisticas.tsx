@@ -1,11 +1,13 @@
 import { FileSpreadsheet, Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { Aviso, BarraFaixas, Barras, Cabecalho, Cartao, Kpi, Selo, SeloFaixa, Vazio, type Tom } from '../../components/ui'
-import { buscarHabilidade } from '../../data/bncc'
+import { ComparacaoIngresso } from '../../components/ComparacaoIngresso'
+import { Aviso, BarraFaixas, Barras, Cabecalho, Cartao, Kpi, MiniBarra, Selo, SeloFaixa, Vazio, type Tom } from '../../components/ui'
+import { buscarHabilidade, ordemDisciplina } from '../../data/bncc'
 import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDaSerie, etapaAvaliacao, nomesProfessores } from '../../lib/consultas'
 import {
   agruparPor,
+  agruparPorAnoDeIngresso,
   analisarQuestoes,
   avaliados,
   coletarResultados,
@@ -16,6 +18,7 @@ import {
   NOMES_FAIXAS,
   participacao,
   progressoDe,
+  separarPorIngresso,
   type AlertaQuestao,
   type ResultadoAluno,
 } from '../../lib/estatisticas'
@@ -23,7 +26,6 @@ import { baixarCsv, paraNomeDeArquivo } from '../../lib/exportar'
 import { compararTexto, pct, plural, serieNome, turmaNome } from '../../lib/formato'
 import { useDb } from '../../store/db'
 import { BRANCO, LETRAS, RASURA, SERIES, type Db, type Serie } from '../../types'
-import { MiniBarra, ordemDisciplina } from '../turma/ResultadosTurma'
 
 const ALERTAS: Record<AlertaQuestao, { rotulo: string; texto: string; tom: Tom }> = {
   gabarito_suspeito: {
@@ -132,6 +134,20 @@ export default function Estatisticas() {
     )
   }
 
+  function exportarIngresso() {
+    const grupos = [
+      { rotulo: 'Novos no colégio', lista: separarPorIngresso(resultados).novos },
+      { rotulo: 'Antigos', lista: separarPorIngresso(resultados).antigos },
+      ...agruparPorAnoDeIngresso(resultados).map((g) => ({ rotulo: `Entraram em ${g.rotulo}`, lista: g.resultados })),
+      { rotulo: 'Sem ano de entrada informado', lista: separarPorIngresso(resultados).sem_ano },
+    ]
+    baixarCsv(
+      `novos-e-antigos-${nomeArquivo}.csv`,
+      ['Grupo', 'Alunos avaliados', 'Média de acertos (%)', ...NOMES_FAIXAS],
+      grupos.map((g) => [g.rotulo, avaliados(g.lista).length, mediaPct(g.lista), ...contarFaixas(g.lista, config)]),
+    )
+  }
+
   function exportarQuestoes() {
     if (!caderno) return
     const letras = LETRAS.slice(0, caderno.numAlternativas)
@@ -160,7 +176,11 @@ export default function Estatisticas() {
 
   return (
     <>
-      <Cabecalho titulo="Estatísticas da rede" subtitulo="A Solar vê só números agregados: os nomes dos alunos ficam com as escolas." />
+      <Cabecalho
+        sobretitulo="Resultados"
+        titulo="Estatísticas da rede"
+        subtitulo="A Solar vê só números agregados: os nomes dos alunos ficam com as escolas."
+      />
 
       <div className="cartao filtros">
         <label className="campo">
@@ -205,6 +225,9 @@ export default function Estatisticas() {
             </button>
             <button className="btn btn-pequeno" onClick={exportarHabilidades} disabled={!lista.length}>
               <FileSpreadsheet size={15} aria-hidden /> Habilidades
+            </button>
+            <button className="btn btn-pequeno" onClick={exportarIngresso} disabled={!lista.length}>
+              <FileSpreadsheet size={15} aria-hidden /> Novos e antigos
             </button>
             {caderno && (
               <button className="btn btn-pequeno" onClick={exportarQuestoes} disabled={!lista.length}>
@@ -262,6 +285,8 @@ export default function Estatisticas() {
               )}
             </div>
           )}
+
+          <ComparacaoIngresso resultados={resultados} config={config} />
 
           <Cartao
             titulo="Turmas"
@@ -335,7 +360,7 @@ export default function Estatisticas() {
                         <td className="descricao-habilidade">{h?.descricao ?? '—'}</td>
                         <td className="num">{d.questoes}</td>
                         <td className="coluna-barra">
-                          <MiniBarra valor={d.pct} />
+                          <MiniBarra valor={d.pct} config={config} />
                         </td>
                       </tr>
                     )
@@ -464,7 +489,7 @@ function AnaliseQuestoes(props: {
                     )}
                   </td>
                   <td>{a.questao.anulada ? <span className="texto-2">anulada</span> : (a.questao.gabarito ?? <span className="texto-2">sem gabarito</span>)}</td>
-                  <td className="coluna-barra">{a.pctAcerto != null ? <MiniBarra valor={a.pctAcerto} /> : '—'}</td>
+                  <td className="coluna-barra">{a.pctAcerto != null ? <MiniBarra valor={a.pctAcerto} config={props.db.config} /> : '—'}</td>
                   <td className="marcacoes">
                     {a.n > 0 &&
                       letras.map((l) => (
