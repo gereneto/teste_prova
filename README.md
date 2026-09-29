@@ -57,7 +57,7 @@ npm test         # testes da correção, das estatísticas e dos dados de exempl
 npm run build    # gera a versão publicada em dist/
 ```
 
-Cada envio para a branch `main` testa, compila e publica o site no GitHub Pages (`.github/workflows/publicar.yml`).
+O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio para a branch `main` roda os testes e compila o site (`.github/workflows/publicar.yml`). A publicação no GitHub Pages só acontece quando o repositório é público, porque no plano gratuito do GitHub repositório privado não tem Pages. Enquanto isso, o site de teste é publicado a partir de uma cópia pública, em <https://github.com/gereneto/teste_prova>.
 
 | Pasta | O que tem |
 |---|---|
