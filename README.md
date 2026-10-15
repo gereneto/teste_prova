@@ -120,7 +120,7 @@ npm test         # testes da correção, das estatísticas, das leituras e dos d
 npm run build    # gera a versão publicada em dist/
 ```
 
-O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio para a branch `main` roda os testes e compila o site (`.github/workflows/publicar.yml`). A publicação no GitHub Pages só acontece quando o repositório é público, porque no plano gratuito do GitHub repositório privado não tem Pages. Enquanto isso, o site de teste é publicado a partir de uma cópia pública, em <https://github.com/gereneto/teste_prova>. O site definitivo vai para a Cloudflare, com domínio próprio.
+O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio para a branch `main` roda os testes, compila o site e publica no GitHub Pages (`.github/workflows/publicar.yml`), em <https://solar-colegios.github.io/prova-solar/>. Para isso, o Pages do repositório precisa estar com a origem “GitHub Actions” (Settings › Pages › Build and deployment). A cópia pública <https://github.com/gereneto/teste_prova> publica o mesmo site em <https://gereneto.github.io/teste_prova/>. O site definitivo vai para a Cloudflare, com domínio próprio.
 
 | Pasta ou arquivo | O que tem |
 |---|---|

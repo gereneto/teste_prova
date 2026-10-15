@@ -14,8 +14,8 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
-# Testes e compilação rodam sempre. A publicação no GitHub Pages só acontece em repositório
-# público: no plano gratuito do GitHub, repositório privado não tem Pages.
+# A cada envio para a main: testes, compilação e publicação no GitHub Pages. No repositório,
+# o Pages precisa estar com a origem "GitHub Actions" (Settings > Pages > Build and deployment).
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,15 +28,12 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - if: ${{ !github.event.repository.private }}
-        uses: actions/configure-pages@v6
-      - if: ${{ !github.event.repository.private }}
-        uses: actions/upload-pages-artifact@v5
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
-    if: ${{ !github.event.repository.private }}
     needs: build
     runs-on: ubuntu-latest
     environment:
