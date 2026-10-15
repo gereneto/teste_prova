@@ -16,6 +16,8 @@ function ler(): Perfil | null {
   }
 }
 
+export const getPerfil = () => perfil
+
 export function definirPerfil(novo: Perfil | null) {
   perfil = novo
   try {

@@ -111,6 +111,8 @@ export interface FiltroResultados {
   serie?: Serie | null
   colegioId?: Id | null
   turmaId?: Id | null
+  /** Alunos que aguardam a confirmação da coordenação ficam fora, a não ser que se peça. */
+  incluirPendentes?: boolean
 }
 
 export function coletarResultados(db: Db, filtro: FiltroResultados): ResultadoAluno[] {
@@ -132,6 +134,7 @@ export function coletarResultados(db: Db, filtro: FiltroResultados): ResultadoAl
       const colegio = colegios.get(turma.colegioId)
       if (!colegio) continue
       for (const aluno of alunosDaTurma(db, turma.id, lancamento)) {
+        if (aluno.pendente && !filtro.incluirPendentes) continue
         const resposta = lancamento?.respostas[aluno.id]
         const completo = respostaCompleta(caderno, resposta)
         saida.push({
@@ -195,8 +198,8 @@ export function participacao(resultados: ResultadoAluno[]): Participacao {
   return p
 }
 
-export function agruparPor<K>(resultados: ResultadoAluno[], chave: (r: ResultadoAluno) => K): Map<K, ResultadoAluno[]> {
-  const grupos = new Map<K, ResultadoAluno[]>()
+export function agruparPor<T extends ResultadoAluno, K>(resultados: T[], chave: (r: T) => K): Map<K, T[]> {
+  const grupos = new Map<K, T[]>()
   for (const r of resultados) {
     const k = chave(r)
     const grupo = grupos.get(k)
@@ -206,7 +209,7 @@ export function agruparPor<K>(resultados: ResultadoAluno[], chave: (r: Resultado
   return grupos
 }
 
-export type AlertaQuestao = 'gabarito_suspeito' | 'muito_dificil' | 'muito_facil'
+export type AlertaQuestao = 'gabarito_suspeito' | 'muito_dificil' | 'muito_facil' | 'nao_separa'
 
 export interface AnaliseQuestao {
   indice: number
@@ -215,7 +218,9 @@ export interface AnaliseQuestao {
   pctAcerto: number | null
   /** Quantos alunos marcaram cada letra, em branco ou rasurada. */
   contagem: Record<string, number>
-  erroMaisComum: { marca: string; pct: number } | null
+  erroMaisComum: { marca: string; qtd: number; pct: number } | null
+  /** Alternativas erradas que quase ninguém marcou: não estão funcionando como armadilha (é só uma observação, não um alerta). */
+  esquecidas: string[]
   /** Correlação entre acertar a questão e ir bem no resto da prova (ponto-bisserial). */
   discriminacao: number | null
   alertas: AlertaQuestao[]
@@ -223,6 +228,10 @@ export interface AnaliseQuestao {
 
 /** Abaixo disso, os alertas por questão seriam ruído. */
 export const MINIMO_PARA_ALERTAS = 30
+/** Abaixo desta correlação, a questão quase não separa quem vai bem de quem vai mal na prova. */
+export const DISCRIMINACAO_BAIXA = 0.1
+/** Uma alternativa errada marcada por menos que isso (em %) não está funcionando. */
+export const PCT_ALTERNATIVA_ESQUECIDA = 2
 
 export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[]): AnaliseQuestao[] {
   const doCaderno = avaliados(resultados).filter((r) => r.caderno.id === caderno.id)
@@ -234,7 +243,7 @@ export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[])
       contagem[marca] = (contagem[marca] ?? 0) + 1
     }
     if (!questaoValida(questao) || n === 0) {
-      return { indice, questao, n, pctAcerto: null, contagem, erroMaisComum: null, discriminacao: null, alertas: [] }
+      return { indice, questao, n, pctAcerto: null, contagem, erroMaisComum: null, esquecidas: [], discriminacao: null, alertas: [] }
     }
     const acertou: number[] = doCaderno.map((r) => (r.correcao.porQuestao[indice] === 'certa' ? 1 : 0))
     const resto = doCaderno.map((r, k) => r.correcao.acertos - acertou[k])
@@ -248,13 +257,17 @@ export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[])
     }
 
     const discriminacao = correlacao(acertou, resto)
+    const erradas = LETRAS.slice(0, caderno.numAlternativas).filter((l) => l !== questao.gabarito)
+    const esquecidas = n >= MINIMO_PARA_ALERTAS ? erradas.filter((l) => (100 * (contagem[l] ?? 0)) / n < PCT_ALTERNATIVA_ESQUECIDA) : []
     const alertas: AlertaQuestao[] = []
     if (n >= MINIMO_PARA_ALERTAS) {
       // Quem vai bem no resto da prova erra esta questão, e uma alternativa errada é mais marcada que a do gabarito.
       const outraMaisMarcada = maisMarcada !== null && maisMarcada.qtd > acertos
-      if (discriminacao !== null && discriminacao < -0.05 && outraMaisMarcada) alertas.push('gabarito_suspeito')
+      const suspeito = discriminacao !== null && discriminacao < -0.05 && outraMaisMarcada
+      if (suspeito) alertas.push('gabarito_suspeito')
       if (pctAcerto < 20) alertas.push('muito_dificil')
       if (pctAcerto > 95) alertas.push('muito_facil')
+      if (!suspeito && pctAcerto >= 20 && pctAcerto <= 95 && discriminacao !== null && discriminacao < DISCRIMINACAO_BAIXA) alertas.push('nao_separa')
     }
     return {
       indice,
@@ -262,7 +275,8 @@ export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[])
       n,
       pctAcerto,
       contagem,
-      erroMaisComum: maisMarcada && { marca: maisMarcada.marca, pct: (100 * maisMarcada.qtd) / n },
+      erroMaisComum: maisMarcada && { marca: maisMarcada.marca, qtd: maisMarcada.qtd, pct: (100 * maisMarcada.qtd) / n },
+      esquecidas,
       discriminacao,
       alertas,
     }
@@ -326,11 +340,17 @@ export function desempenhoPor(resultados: ResultadoAluno[], chaveDa: (q: Questao
 
 export type GrupoIngresso = 'novos' | 'antigos' | 'sem_ano'
 
-/** Novos são os alunos que entraram no colégio no ano letivo da avaliação. */
-export function grupoIngresso(aluno: Aluno, anoLetivo: number): GrupoIngresso {
-  if (aluno.anoIngresso == null) return 'sem_ano'
-  return aluno.anoIngresso >= anoLetivo ? 'novos' : 'antigos'
+/**
+ * Novos são os alunos que entraram no colégio no ano letivo da avaliação. É a única regra do site:
+ * telas, planilhas e estatísticas usam esta função. Ano de entrada depois do ano letivo é erro de
+ * cadastro e fica fora da comparação, como quem está sem o ano.
+ */
+export function grupoIngresso(aluno: Pick<Aluno, 'anoIngresso'>, anoLetivo: number): GrupoIngresso {
+  if (aluno.anoIngresso == null || aluno.anoIngresso > anoLetivo) return 'sem_ano'
+  return aluno.anoIngresso === anoLetivo ? 'novos' : 'antigos'
 }
+
+export const ehNovo = (aluno: Pick<Aluno, 'anoIngresso'>, anoLetivo: number) => grupoIngresso(aluno, anoLetivo) === 'novos'
 
 export function separarPorIngresso(resultados: ResultadoAluno[]): Record<GrupoIngresso, ResultadoAluno[]> {
   const grupos: Record<GrupoIngresso, ResultadoAluno[]> = { novos: [], antigos: [], sem_ano: [] }
@@ -358,8 +378,8 @@ export function agruparPorAnoDeIngresso(resultados: ResultadoAluno[], anosSepara
     { chave: 'antes', rotulo: `Até ${anoLetivo - 1 - anosSeparados}`, resultados: [] },
   ]
   for (const r of resultados) {
-    if (r.aluno.anoIngresso == null) continue
-    const anosAntes = r.turma.anoLetivo - r.aluno.anoIngresso
+    if (grupoIngresso(r.aluno, r.turma.anoLetivo) === 'sem_ano') continue
+    const anosAntes = r.turma.anoLetivo - r.aluno.anoIngresso!
     grupos[Math.max(0, Math.min(anosAntes, anosSeparados + 1))].resultados.push(r)
   }
   return grupos

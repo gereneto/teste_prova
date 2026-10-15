@@ -9,13 +9,19 @@ function formatarCelula(valor: Celula): string {
   return `"${valor.replace(/"/g, '""')}"`
 }
 
-/** CSV com ponto e vírgula e BOM: abre direto no Excel em português, com acentos. */
-export function baixarCsv(nomeArquivo: string, cabecalho: string[], linhas: Celula[][]) {
-  const conteudo = [cabecalho, ...linhas].map((linha) => linha.map(formatarCelula).join(';')).join('\r\n')
+/**
+ * CSV com ponto e vírgula e BOM: abre direto no Excel em português, com acentos. O aviso, se houver,
+ * vai na primeira linha (por exemplo, que a planilha tem dados de alunos ou compara turmas).
+ */
+export function baixarCsv(nomeArquivo: string, cabecalho: string[], linhas: Celula[][], aviso?: string) {
+  const conteudo = [...(aviso ? [[aviso]] : []), cabecalho, ...linhas].map((linha) => linha.map(formatarCelula).join(';')).join('\r\n')
   baixarBlob(new Blob(['﻿' + conteudo], { type: 'text/csv;charset=utf-8' }), nomeArquivo)
 }
 
-/** "Avaliação diagnóstica — 3º bimestre" → "avaliacao-diagnostica-3o-bimestre" */
+export const AVISO_COMPARACAO =
+  'Esta planilha compara turmas. Use para descobrir onde o colégio pode se ajudar, não para classificar professores. Não divulgue em mural nem em grupo de mensagens.'
+
+/** "Avaliação anual 2026 — 3º ano" → "avaliacao-anual-2026-3o-ano" */
 export function paraNomeDeArquivo(texto: string): string {
   return texto
     .normalize('NFD')

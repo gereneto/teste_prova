@@ -1,20 +1,20 @@
-import { ArrowLeft, ArrowRight, ChartColumn, Check, Circle, CircleDashed, CloudCheck, FileText, LoaderCircle, Pencil, UserX } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Circle, CircleDashed, CloudCheck, FileText, LoaderCircle, Pencil, TriangleAlert, UserX } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Aviso, Cabecalho, Progresso, Selo, Vazio } from '../../components/ui'
-import { corrigir, marcaEm, progressoDaTurma, respostaCompleta } from '../../lib/estatisticas'
-import { dataLonga, plural, turmaNome } from '../../lib/formato'
+import { Aviso, Explicacao, Progresso, Selo, Vazio } from '../../components/ui'
+import { corrigir, ehNovo, marcaEm, progressoDaTurma, questaoValida, respostaCompleta } from '../../lib/estatisticas'
+import { dataLonga, plural } from '../../lib/formato'
+import { identificacao } from '../../lib/iniciais'
 import { concluirLancamento, definirSituacao, marcarQuestao } from '../../store/acoes'
 import { useSalvando } from '../../store/db'
 import { BRANCO, LETRAS, RASURA, VAZIO, type Aluno, type Caderno, type Id, type RespostaAluno, type Situacao } from '../../types'
+import { CabecalhoTurma } from './CabecalhoTurma'
 import { useContextoTurma, type ContextoTurma } from './contexto'
 
 export default function Lancamento() {
   const contexto = useContextoTurma()
   if ('erro' in contexto) {
-    return (
-      <Vazio titulo={contexto.erro} acao={<Link className="btn" to={contexto.base}>Voltar</Link>} />
-    )
+    return <Vazio titulo={contexto.erro} acao={<Link className="btn" to={contexto.base}>Voltar ao início</Link>} />
   }
   return <TelaLancamento {...contexto} />
 }
@@ -24,7 +24,10 @@ const TECLAS_LETRA: Record<string, number> = { a: 0, b: 1, c: 2, d: 3, e: 4, '1'
 // As linhas das questões alternam as cores do símbolo da Solar, o que ajuda a não pular linha ao copiar do papel.
 const CORES_DAS_LINHAS = ['cor-vermelha', 'cor-laranja', 'cor-amarela'] as const
 
-function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos, base }: ContextoTurma) {
+type Conferencia = { tipo: 'igual'; anterior: Aluno } | { tipo: 'brancos'; quantas: number; validas: number }
+
+function TelaLancamento(contexto: ContextoTurma) {
+  const { db, perfil, caderno, turma, colegio, lancamento, alunos, base } = contexto
   const navigate = useNavigate()
   const total = caderno.questoes.length
   const letras = LETRAS.slice(0, caderno.numAlternativas)
@@ -50,6 +53,9 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
     return { alunoId: primeiro?.id ?? '', questao: primeiro ? primeiraPendente(resposta(primeiro.id)?.marcas ?? '') : 0 }
   })
   const [mensagem, setMensagem] = useState<{ texto: string; erro: boolean } | null>(null)
+  const [conferencia, setConferencia] = useState<Conferencia | null>(null)
+  // Conferências já respondidas com "Está certo": não perguntam de novo para as mesmas marcações.
+  const [confirmadas, setConfirmadas] = useState<Set<string>>(() => new Set())
 
   const indiceAluno = alunos.findIndex((a) => a.id === cursor.alunoId)
   const aluno: Aluno | undefined = alunos[indiceAluno]
@@ -60,10 +66,15 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
   const todosLancados = alunos.length > 0 && progresso.lancados === alunos.length
   const alunoCompleto = aluno ? completo(aluno.id) : false
   const resultados = `${base}/resultados/${caderno.id}/${turma.id}`
+  const validas = caderno.questoes.filter((q) => !q.anulada).length
+  const lancadas = caderno.questoes.filter((q, i) => !q.anulada && marcaEm(marcas, i) !== VAZIO).length
+  const xara = aluno ? alunos.find((a) => a.id !== aluno.id && a.iniciais === aluno.iniciais) : undefined
+  const chaveConferencia = aluno ? `${aluno.id}:${marcas}` : ''
 
   function irPara(alunoId: Id) {
     setCursor({ alunoId, questao: primeiraPendente(resposta(alunoId)?.marcas ?? '') })
     setMensagem(null)
+    setConferencia(null)
   }
 
   function proximoPendente(ignorar?: Id): Aluno | null {
@@ -78,17 +89,38 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
     if (!aluno) return
     if (situacao !== 'presente') {
       const motivo = situacao === 'faltou' ? 'falta' : 'prova adaptada'
-      setMensagem({ erro: true, texto: `${aluno.nome} está com ${motivo}. Desfaça para lançar as respostas.` })
+      setMensagem({ erro: true, texto: `O nº ${aluno.numero} está com ${motivo}. Desfaça para lançar as respostas.` })
       return
     }
     if (indice >= total) {
-      setMensagem({ erro: false, texto: 'Todas as questões deste aluno já foram lançadas. Clique numa questão para corrigir ou siga para o próximo aluno.' })
+      setMensagem({ erro: false, texto: 'Todas as questões deste aluno já foram lançadas. Toque numa questão para revisar ou siga para o próximo aluno.' })
       return
     }
     if (caderno.questoes[indice].anulada) return
     marcarQuestao(caderno.id, turma.id, aluno.id, indice, marca, total)
     setMensagem(null)
+    setConferencia(null)
     setCursor({ alunoId: aluno.id, questao: proximaValida(indice + 1) })
+  }
+
+  /** Antes de passar ao próximo aluno, desconfia de duas coisas: a mesma prova lançada duas vezes e muitas questões em branco. */
+  function precisaConferir(): Conferencia | null {
+    if (!aluno || situacao !== 'presente' || confirmadas.has(chaveConferencia)) return null
+    const anterior = alunos[indiceAluno - 1]
+    const respostaAnterior = anterior && resposta(anterior.id)
+    if (anterior && respostaAnterior?.situacao === 'presente' && completo(anterior.id) && respostaAnterior.marcas.trimEnd() === marcas.trimEnd()) {
+      return { tipo: 'igual', anterior }
+    }
+    const brancos = caderno.questoes.filter((q, i) => questaoValida(q) && marcaEm(marcas, i) === BRANCO).length
+    if (validas > 0 && brancos * 2 >= validas) return { tipo: 'brancos', quantas: brancos, validas }
+    return null
+  }
+
+  function seguir() {
+    setConferencia(null)
+    const seguinte = proximoPendente()
+    if (seguinte) irPara(seguinte.id)
+    else setMensagem({ erro: false, texto: 'Todos os alunos foram lançados. Confira e conclua o lançamento.' })
   }
 
   function proximoAluno() {
@@ -97,13 +129,21 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
       const faltam = caderno.questoes.filter((q, i) => !q.anulada && marcaEm(marcas, i) === VAZIO).length
       setMensagem({
         erro: true,
-        texto: `Falta lançar ${plural(faltam, 'questão', 'questões')} de ${aluno.nome.split(' ')[0]}. Se o aluno não respondeu, use “Em branco”.`,
+        texto: `Falta lançar ${plural(faltam, 'questão', 'questões')} do nº ${aluno.numero}. Se o aluno não respondeu, use “Em branco”.`,
       })
       return
     }
-    const seguinte = proximoPendente()
-    if (seguinte) irPara(seguinte.id)
-    else setMensagem({ erro: false, texto: 'Todos os alunos foram lançados. Confira e conclua o lançamento.' })
+    const duvida = precisaConferir()
+    if (duvida) {
+      setConferencia(duvida)
+      return
+    }
+    seguir()
+  }
+
+  function estaCerto() {
+    setConfirmadas(new Set(confirmadas).add(chaveConferencia))
+    seguir()
   }
 
   function alternarSituacao(nova: Exclude<Situacao, 'presente'>) {
@@ -111,6 +151,7 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
     const valor: Situacao = situacao === nova ? 'presente' : nova
     definirSituacao(caderno.id, turma.id, aluno.id, valor)
     setMensagem(null)
+    setConferencia(null)
     if (valor === 'presente') {
       setCursor({ alunoId: aluno.id, questao: primeiraPendente(marcas) })
       return
@@ -127,7 +168,7 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
   function aoTeclar(e: KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return
     const alvo = e.target instanceof HTMLElement ? e.target : null
-    if (alvo?.closest('input, textarea, select')) return
+    if (alvo?.closest('input, textarea, select, dialog')) return
     const tecla = e.key.toLowerCase()
     // Enter ou espaço num botão focado com Tab continuam acionando o botão.
     if ((tecla === 'enter' || tecla === ' ') && alvo?.closest('button, a')) return
@@ -143,7 +184,7 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
     else if (tecla === 'x' || tecla === 'r' || tecla === '*') marcar(RASURA)
     else if (tecla === 'backspace' || tecla === 'arrowup') setCursor((c) => ({ ...c, questao: anteriorValida(c.questao - 1) }))
     else if (tecla === 'arrowdown') setCursor((c) => ({ ...c, questao: proximaValida(c.questao + 1) }))
-    else if (tecla === 'enter') proximoAluno()
+    else if (tecla === 'enter') (conferencia ? estaCerto : proximoAluno)()
     else return
     e.preventDefault()
   }
@@ -175,30 +216,40 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
     if (e.detail > 0 && document.activeElement instanceof HTMLButtonElement) document.activeElement.blur()
   }
 
-  const cabecalho = (
-    <Cabecalho
-      sobretitulo={avaliacao.titulo}
-      titulo="Lançar respostas"
-      subtitulo={`${turmaNome(turma)} · ${colegio.nome}`}
-      voltar={{ para: base, rotulo: base === '/professor' ? 'Minhas turmas' : 'Painel do colégio' }}
-      acoes={
-        <>
-          <IndicadorSalvo />
-          <Link className="btn" to={resultados}>
-            <ChartColumn size={16} aria-hidden /> Resultados
-          </Link>
-        </>
-      }
-    />
-  )
+  const cabecalho = <CabecalhoTurma db={db} perfil={perfil} turma={turma} colegio={colegio} base={base} aba="lancar" caderno={caderno} acoes={<IndicadorSalvo />} />
 
   if (!alunos.length) {
     return (
       <>
         {cabecalho}
-        <Vazio titulo="Esta turma ainda não tem alunos">A coordenação do colégio cadastra os alunos em “Turmas e alunos”.</Vazio>
+        <Vazio
+          titulo="Esta turma ainda não tem alunos no site"
+          acao={
+            <Link className="btn btn-primario" to={`${base}/turma/${turma.id}/alunos`}>
+              Ir para a lista de alunos
+            </Link>
+          }
+        >
+          {perfil.papel === 'professor'
+            ? 'A coordenação cadastra a lista da turma. Se precisar, você pode pedir a inclusão de um aluno na aba Alunos.'
+            : 'Cole a lista da secretaria na aba Alunos.'}
+        </Vazio>
       </>
     )
+  }
+
+  // Letras lançadas em blocos de 5, como na folha, para conferir com o papel.
+  const blocos: string[] = []
+  for (let i = 0; i < total; i += 5) {
+    const trecho = caderno.questoes
+      .slice(i, i + 5)
+      .map((q, k) => {
+        const marca = marcaEm(marcas, i + k)
+        if (q.anulada) return 'x'
+        return marca === VAZIO ? '·' : marca === BRANCO ? '–' : marca === RASURA ? '*' : marca
+      })
+      .join(' ')
+    blocos.push(`${i + 1}–${Math.min(i + 5, total)}: ${trecho}`)
   }
 
   return (
@@ -207,14 +258,13 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
 
       {lancamento?.concluidoEm ? (
         <Aviso tom="sucesso" acoes={<Link className="btn btn-pequeno" to={resultados}>Ver resultados</Link>}>
-          Lançamento concluído em {dataLonga(lancamento.concluidoEm)}. Você ainda pode corrigir respostas: os resultados se atualizam na
-          hora.
+          Lançamento concluído em {dataLonga(lancamento.concluidoEm)}. Você ainda pode revisar respostas: os resultados se atualizam na hora.
         </Aviso>
       ) : todosLancados ? (
         <Aviso
           tom="sucesso"
           acoes={
-            <button className="btn btn-primario btn-pequeno" onClick={concluir}>
+            <button className="btn btn-primario" onClick={concluir}>
               <Check size={16} aria-hidden /> Concluir lançamento
             </button>
           }
@@ -239,105 +289,150 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
         </aside>
 
         {aluno && (
-          <section className="lanc-principal cartao" aria-label={`Respostas de ${aluno.nome}`}>
+          <section className="lanc-principal cartao" aria-label={`Respostas do ${identificacao(aluno)}`}>
             <div className="lanc-aluno">
-              <div>
-                <div className="texto-2 pequeno">
-                  Nº {aluno.numero} · aluno {indiceAluno + 1} de {alunos.length}
+              <div className="lanc-aluno-id">
+                <span className="lanc-numero">
+                  <span className="lanc-numero-rotulo">Nº</span> {aluno.numero}
+                </span>
+                <div>
+                  <h2>
+                    {aluno.iniciais}
+                    {ehNovo(aluno, turma.anoLetivo) && <span className="tag-novo">Novo no colégio</span>}
+                    {aluno.pendente && <Selo tom="ambar">Aguardando a coordenação</Selo>}
+                    {!aluno.ativo && <Selo>Não está mais na turma</Selo>}
+                  </h2>
+                  <p className="texto-2 pequeno">
+                    Aluno {indiceAluno + 1} de {alunos.length}
+                    {aluno.anoIngresso ? ` · entrou no colégio em ${aluno.anoIngresso}` : ''}
+                  </p>
                 </div>
-                <h2>
-                  {aluno.nome} {!aluno.ativo && <Selo>saiu da turma</Selo>}
-                </h2>
               </div>
               <div className="lanc-situacoes">
                 <button className={`btn ${situacao === 'faltou' ? 'btn-marcado' : ''}`} aria-pressed={situacao === 'faltou'} onClick={() => alternarSituacao('faltou')}>
                   <UserX size={16} aria-hidden /> Faltou
                 </button>
-                <button
-                  className={`btn ${situacao === 'adaptada' ? 'btn-marcado' : ''}`}
-                  aria-pressed={situacao === 'adaptada'}
-                  onClick={() => alternarSituacao('adaptada')}
-                  title="Para quem fez uma versão diferente da prova: o aluno fica fora das médias"
-                >
+                <button className={`btn ${situacao === 'adaptada' ? 'btn-marcado' : ''}`} aria-pressed={situacao === 'adaptada'} onClick={() => alternarSituacao('adaptada')}>
                   <FileText size={16} aria-hidden /> Prova adaptada
                 </button>
+                <Explicacao rotulo="O que é prova adaptada?">Para quem fez uma versão diferente da prova. O aluno fica fora das médias da turma.</Explicacao>
               </div>
             </div>
 
+            <p className="lanc-confira">
+              Confira se o número escrito na prova é o <strong>{aluno.numero}</strong> antes de lançar.
+              {xara && (
+                <span className="lanc-xara">
+                  <TriangleAlert size={15} aria-hidden /> Atenção: há outro {aluno.iniciais} nesta turma, o nº {xara.numero}.
+                </span>
+              )}
+            </p>
+
             {situacao !== 'presente' ? (
               <div className="lanc-ausente">
-                <p>
-                  {aluno.nome.split(' ')[0]} {situacao === 'faltou' ? 'faltou' : 'fez uma prova adaptada'} e fica fora das médias da turma.
-                </p>
+                <p>O nº {aluno.numero} {situacao === 'faltou' ? 'faltou' : 'fez uma prova adaptada'} e fica fora das médias da turma.</p>
                 <button className="btn" onClick={() => alternarSituacao(situacao)}>
                   Desfazer
                 </button>
               </div>
             ) : (
-              <div className="questoes" style={{ gridTemplateRows: `repeat(${Math.min(10, total)}, auto)` }}>
-                {caderno.questoes.map((q, i) => {
-                  const marca = marcaEm(marcas, i)
-                  const classes = [
-                    'questao',
-                    CORES_DAS_LINHAS[i % CORES_DAS_LINHAS.length],
-                    i === cursor.questao && 'atual',
-                    q.anulada && 'anulada',
-                    marca !== VAZIO && 'respondida',
-                  ]
-                  return (
-                    <div
-                      key={i}
-                      className={classes.filter(Boolean).join(' ')}
-                      onClick={(e) => {
-                        if (!q.anulada && !(e.target as HTMLElement).closest('button')) setCursor({ alunoId: aluno.id, questao: i })
-                      }}
-                    >
-                      <span className="questao-num">{i + 1}</span>
-                      <div className="questao-bolhas">
-                        {letras.map((letra) => (
-                          <button
-                            key={letra}
-                            type="button"
-                            className={`bolha ${marca === letra ? 'marcada' : ''}`}
-                            disabled={q.anulada}
-                            aria-pressed={marca === letra}
-                            aria-label={`Questão ${i + 1}, alternativa ${letra}`}
-                            onClick={() => marcar(letra, i)}
-                          >
-                            {letra}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="questao-extras">
-                        {q.anulada ? (
-                          <span className="questao-anulada">Questão anulada</span>
-                        ) : (
-                          <>
+              <>
+                <p className="lanc-dica">Errou? Toque na letra certa. Rasurada é quando o aluno marcou mais de uma alternativa.</p>
+                <div className="questoes" style={{ gridTemplateRows: `repeat(${Math.min(10, total)}, auto)` }}>
+                  {caderno.questoes.map((q, i) => {
+                    const marca = marcaEm(marcas, i)
+                    const classes = [
+                      'questao',
+                      CORES_DAS_LINHAS[i % CORES_DAS_LINHAS.length],
+                      i === cursor.questao && 'atual',
+                      q.anulada && 'anulada',
+                      marca !== VAZIO && 'respondida',
+                    ]
+                    return (
+                      <div
+                        key={i}
+                        className={classes.filter(Boolean).join(' ')}
+                        onClick={(e) => {
+                          if (!q.anulada && !(e.target as HTMLElement).closest('button')) setCursor({ alunoId: aluno.id, questao: i })
+                        }}
+                      >
+                        <span className="questao-num">{i + 1}</span>
+                        <div className="questao-bolhas">
+                          {letras.map((letra) => (
                             <button
+                              key={letra}
                               type="button"
-                              className={`opcao-extra ${marca === BRANCO ? 'marcada' : ''}`}
-                              aria-pressed={marca === BRANCO}
-                              aria-label={`Questão ${i + 1}, em branco`}
-                              onClick={() => marcar(BRANCO, i)}
+                              className={`bolha ${marca === letra ? 'marcada' : ''}`}
+                              disabled={q.anulada}
+                              aria-pressed={marca === letra}
+                              aria-label={`Questão ${i + 1}, alternativa ${letra}`}
+                              onClick={() => marcar(letra, i)}
                             >
-                              Em branco
+                              {letra}
                             </button>
-                            <button
-                              type="button"
-                              className={`opcao-extra ${marca === RASURA ? 'marcada' : ''}`}
-                              aria-pressed={marca === RASURA}
-                              aria-label={`Questão ${i + 1}, rasurada`}
-                              title="O aluno marcou mais de uma alternativa"
-                              onClick={() => marcar(RASURA, i)}
-                            >
-                              Rasurada
-                            </button>
-                          </>
-                        )}
+                          ))}
+                        </div>
+                        <div className="questao-extras">
+                          {q.anulada ? (
+                            <span className="questao-anulada">Questão anulada</span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className={`opcao-extra ${marca === BRANCO ? 'marcada' : ''}`}
+                                aria-pressed={marca === BRANCO}
+                                aria-label={`Questão ${i + 1}, em branco`}
+                                onClick={() => marcar(BRANCO, i)}
+                              >
+                                Em branco
+                              </button>
+                              <button
+                                type="button"
+                                className={`opcao-extra ${marca === RASURA ? 'marcada' : ''}`}
+                                aria-pressed={marca === RASURA}
+                                aria-label={`Questão ${i + 1}, rasurada`}
+                                onClick={() => marcar(RASURA, i)}
+                              >
+                                Rasurada
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+                <p className="lanc-blocos" aria-label="Respostas lançadas, de 5 em 5">
+                  {blocos.map((b) => (
+                    <span key={b}>{b}</span>
+                  ))}
+                </p>
+              </>
+            )}
+
+            {conferencia && (
+              <div className="lanc-conferencia" role="alert">
+                <p>
+                  <TriangleAlert size={18} aria-hidden />{' '}
+                  {conferencia.tipo === 'igual'
+                    ? `As respostas do nº ${aluno.numero} são iguais às do nº ${conferencia.anterior.numero}. Você lançou a mesma prova duas vezes?`
+                    : `${conferencia.quantas} das ${conferencia.validas} questões estão em branco. O aluno faltou?`}
+                </p>
+                <div className="form-acoes">
+                  {conferencia.tipo === 'brancos' && (
+                    <button className="btn" onClick={() => alternarSituacao('faltou')}>
+                      <UserX size={16} aria-hidden /> Marcar que faltou
+                    </button>
+                  )}
+                  {conferencia.tipo === 'igual' && (
+                    <button className="btn" onClick={() => setConferencia(null)}>
+                      Revisar o nº {aluno.numero}
+                    </button>
+                  )}
+                  <button className="btn btn-primario" onClick={estaCerto}>
+                    Está certo, seguir
+                  </button>
+                </div>
               </div>
             )}
 
@@ -363,6 +458,17 @@ function TelaLancamento({ caderno, avaliacao, turma, colegio, lancamento, alunos
           </section>
         )}
       </div>
+
+      {aluno && (
+        <div className="lanc-barra-celular">
+          <span>
+            <strong>Nº {aluno.numero}</strong> · {situacao === 'presente' ? `${lancadas} de ${validas} questões` : situacao === 'faltou' ? 'faltou' : 'prova adaptada'}
+          </span>
+          <button className={`btn ${alunoCompleto ? 'btn-primario' : ''}`} onClick={proximoAluno}>
+            Próximo aluno <ArrowRight size={16} aria-hidden />
+          </button>
+        </div>
+      )}
     </>
   )
 }
@@ -381,10 +487,10 @@ function ItemAluno(props: { aluno: Aluno; caderno: Caderno; resposta: RespostaAl
   } else if (completo && resposta) {
     Icone = Check
     const correcao = corrigir(caderno, resposta.marcas)
-    detalhe = correcao.validas ? `${correcao.acertos}/${correcao.validas}` : 'ok'
+    detalhe = correcao.validas ? `${correcao.acertos}/${correcao.validas}` : 'feito'
   } else if (resposta) {
     Icone = CircleDashed
-    detalhe = 'incompleto'
+    detalhe = 'falta terminar'
   }
   if (atual) Icone = Pencil
   return (
@@ -392,7 +498,8 @@ function ItemAluno(props: { aluno: Aluno; caderno: Caderno; resposta: RespostaAl
       <button className={`lanc-lista-item ${atual ? 'atual' : ''} ${completo ? 'feito' : ''}`} onClick={props.aoEscolher} aria-current={atual || undefined}>
         <Icone size={15} aria-hidden className="lanc-lista-icone" />
         <span className="lanc-lista-nome">
-          {aluno.numero}. {aluno.nome}
+          <strong>{aluno.numero}</strong> · {aluno.iniciais}
+          {aluno.pendente && <span className="lanc-lista-pendente"> · aguardando</span>}
         </span>
         <span className="lanc-lista-detalhe">{detalhe}</span>
       </button>
@@ -410,7 +517,7 @@ function IndicadorSalvo() {
         </>
       ) : (
         <>
-          <CloudCheck size={15} aria-hidden /> Salvo neste navegador
+          <CloudCheck size={15} aria-hidden /> Tudo salvo neste navegador
         </>
       )}
     </span>

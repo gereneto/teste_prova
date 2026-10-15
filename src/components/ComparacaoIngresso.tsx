@@ -41,6 +41,15 @@ export function ComparacaoIngresso(props: { resultados: ResultadoAluno[]; config
 
   const poucos = (novos.length > 0 && novos.length < MINIMO_POR_GRUPO) || (antigos.length > 0 && antigos.length < MINIMO_POR_GRUPO)
 
+  if (props.compacta && (!novos.length || !antigos.length)) {
+    return (
+      <p className="comparacao-resumo texto-2">
+        {!novos.length ? `Nenhum aluno avaliado entrou no colégio em ${anoLetivo}.` : 'Todos os alunos avaliados entraram no colégio neste ano.'}
+        {avisoSemAno && ` ${avisoSemAno}`}
+      </p>
+    )
+  }
+
   if (props.compacta) {
     return (
       <p className="comparacao-resumo">

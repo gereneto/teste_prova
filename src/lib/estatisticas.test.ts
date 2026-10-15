@@ -32,9 +32,9 @@ const caderno = (questoes: Questao[]): Caderno => ({
   pdf: null,
 })
 
-const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', nome: id, numero: 1, anoIngresso, ativo: true })
+const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', iniciais: 'A.B.', numero: 1, anoIngresso, ativo: true })
 const turma: Turma = { id: 't', colegioId: 'c', anoLetivo: 2026, serie: 3, nome: 'A', turno: 'Manhã', professorIds: [] }
-const colegio: Colegio = { id: 'c', nome: 'C', cidade: '', uf: '', coordenacao: { nome: '', email: '', telefone: '' } }
+const colegio: Colegio = { id: 'c', nome: 'C', cidade: '', uf: '' }
 
 function resultado(cad: Caderno, id: string, marcas: string): ResultadoAluno {
   return { aluno: aluno(id), turma, colegio, caderno: cad, situacao: 'presente', completo: true, marcas, correcao: corrigir(cad, marcas) }
@@ -102,7 +102,7 @@ describe('progressoDaTurma', () => {
 })
 
 describe('faixas', () => {
-  const config = { faixas: [40, 60, 80] as [number, number, number] }
+  const config = { faixas: [40, 60, 80] as [number, number, number], anoLetivo: 2026 }
 
   it('usa os limites como mínimo de cada faixa', () => {
     expect([0, 39.9, 40, 59, 60, 79.9, 80, 100].map((p) => faixaDe(p, config))).toEqual([0, 0, 1, 1, 2, 2, 3, 3])
@@ -134,7 +134,7 @@ describe('analisarQuestoes', () => {
     }
     const analise = analisarQuestoes(cad, lista)
     expect(analise[4].alertas).toContain('gabarito_suspeito')
-    expect(analise[4].erroMaisComum).toEqual({ marca: 'A', pct: 60 })
+    expect(analise[4].erroMaisComum).toEqual({ marca: 'A', qtd: 24, pct: 60 })
     expect(analise[0].alertas).not.toContain('gabarito_suspeito')
   })
 
@@ -145,6 +145,14 @@ describe('analisarQuestoes', () => {
     const analise = analisarQuestoes(cad, lista)
     expect(analise[0].discriminacao).toBeLessThan(0)
     expect(analise[0].alertas).not.toContain('gabarito_suspeito')
+  })
+
+  it('aponta a alternativa que quase ninguém escolhe', () => {
+    const cad = caderno([q('A'), q('B')])
+    const lista: ResultadoAluno[] = []
+    for (let i = 0; i < 40; i++) lista.push(resultado(cad, `a${i}`, i < 20 ? 'AB' : i < 30 ? 'BC' : 'CD'))
+    const analise = analisarQuestoes(cad, lista)
+    expect(analise[0].esquecidas).toEqual(['D'])
   })
 
   it('não gera alertas com poucos alunos', () => {
@@ -169,10 +177,11 @@ describe('alunos novos e antigos', () => {
   const comIngresso = (id: string, anoIngresso: number | null): ResultadoAluno => ({ ...resultado(cad, id, 'AB'), aluno: aluno(id, anoIngresso) })
 
   it('separa pelo ano de entrada em relação ao ano letivo da turma', () => {
-    const grupos = separarPorIngresso([comIngresso('a', 2026), comIngresso('b', 2024), comIngresso('c', null)])
+    const grupos = separarPorIngresso([comIngresso('a', 2026), comIngresso('b', 2024), comIngresso('c', null), comIngresso('d', 2027)])
     expect(grupos.novos.map((r) => r.aluno.id)).toEqual(['a'])
     expect(grupos.antigos.map((r) => r.aluno.id)).toEqual(['b'])
-    expect(grupos.sem_ano.map((r) => r.aluno.id)).toEqual(['c'])
+    // Ano de entrada depois do ano letivo é erro de cadastro: fica fora, como quem não tem o ano.
+    expect(grupos.sem_ano.map((r) => r.aluno.id)).toEqual(['c', 'd'])
   })
 
   it('agrupa por ano de entrada e junta os que entraram há mais tempo', () => {

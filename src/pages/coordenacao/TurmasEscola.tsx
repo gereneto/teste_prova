@@ -1,9 +1,10 @@
 import { ChevronRight, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Cabecalho, Cartao, Vazio } from '../../components/ui'
-import { nomesProfessores, turmasDoColegio } from '../../lib/consultas'
-import { compararTexto, serieNome, turmaNome } from '../../lib/formato'
+import { Cabecalho, Cartao, Selo, Vazio } from '../../components/ui'
+import { alunosAtivos, anoLetivoAtual, nomesProfessores, pedidosPendentes, turmasDoColegio } from '../../lib/consultas'
+import { ehNovo } from '../../lib/estatisticas'
+import { compararTexto, plural, serieNome, turmaNome } from '../../lib/formato'
 import { criarTurma, type DadosTurma } from '../../store/acoes'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
@@ -18,18 +19,14 @@ export default function TurmasEscola() {
   if (!colegio) return null
 
   const turmas = turmasDoColegio(db, colegio.id)
-  const descreverAlunos = (turma: (typeof turmas)[number]) => {
-    const lista = db.alunos.filter((a) => a.turmaId === turma.id && a.ativo)
-    const novos = lista.filter((a) => a.anoIngresso === turma.anoLetivo).length
-    return `${lista.length} alunos${novos ? ` · ${novos} ${novos === 1 ? 'novo' : 'novos'}` : ''}`
-  }
+  const pedidos = pedidosPendentes(db, colegio.id)
 
   return (
     <>
       <Cabecalho
         sobretitulo={colegio.nome}
         titulo="Turmas e alunos"
-        subtitulo={`${turmas.length} turmas do 1º ao 5º ano`}
+        subtitulo={`${plural(turmas.length, 'turma', 'turmas')} do ano letivo de ${anoLetivoAtual(db)}. Abra uma turma para ver e cadastrar os alunos.`}
         acoes={
           !criando && (
             <button className="btn btn-primario" onClick={() => setCriando(true)}>
@@ -44,7 +41,7 @@ export default function TurmasEscola() {
           db={db}
           colegioId={colegio.id}
           aoCancelar={() => setCriando(false)}
-          aoSalvar={(dados) => navigate(`/coordenacao/turmas/${criarTurma(colegio.id, dados)}`)}
+          aoSalvar={(dados) => navigate(`/coordenacao/turma/${criarTurma(colegio.id, dados)}/alunos`)}
         />
       )}
 
@@ -56,17 +53,32 @@ export default function TurmasEscola() {
         return (
           <Cartao key={serie} titulo={serieNome(serie)}>
             <ul className="lista-links">
-              {doAno.map((turma) => (
-                <li key={turma.id}>
-                  <Link to={`/coordenacao/turmas/${turma.id}`} className="lista-link">
-                    <span className="lista-link-titulo">{turmaNome(turma)}</span>
-                    <span className="texto-2">{turma.turno}</span>
-                    <span className="texto-2">{nomesProfessores(db, turma)}</span>
-                    <span className="texto-2">{descreverAlunos(turma)}</span>
-                    <ChevronRight size={18} aria-hidden />
-                  </Link>
-                </li>
-              ))}
+              {doAno.map((turma) => {
+                const alunos = alunosAtivos(db, turma.id)
+                const novos = alunos.filter((a) => ehNovo(a, turma.anoLetivo)).length
+                const semAno = alunos.filter((a) => a.anoIngresso == null).length
+                const pedidosTurma = pedidos.filter((p) => p.turmaId === turma.id).length
+                return (
+                  <li key={turma.id}>
+                    <Link to={`/coordenacao/turma/${turma.id}/alunos`} className="lista-link">
+                      <span className="lista-link-titulo">{turmaNome(turma)}</span>
+                      <span className="texto-2">{turma.turno}</span>
+                      <span className={turma.professorIds.length ? 'texto-2' : 'texto-alerta'}>{nomesProfessores(db, turma)}</span>
+                      <span className="texto-2">
+                        {plural(alunos.length, 'aluno', 'alunos')}
+                        {novos ? ` · ${plural(novos, 'novo', 'novos')}` : ''}
+                        {(semAno > 0 || pedidosTurma > 0) && (
+                          <span className="bloco">
+                            {pedidosTurma > 0 && <Selo tom="ambar">{plural(pedidosTurma, 'pedido', 'pedidos')}</Selo>}{' '}
+                            {semAno > 0 && <Selo>{semAno} sem ano de entrada</Selo>}
+                          </span>
+                        )}
+                      </span>
+                      <ChevronRight size={18} aria-hidden />
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </Cartao>
         )
@@ -75,7 +87,7 @@ export default function TurmasEscola() {
   )
 }
 
-/** Formulário de turma, usado para criar e para editar. */
+/** Formulário de turma, usado para criar e para editar. Uma turma pode ter mais de um professor. */
 export function FormularioTurma(props: {
   db: Db
   colegioId: Id
@@ -86,22 +98,27 @@ export function FormularioTurma(props: {
   aoCancelar?: () => void
 }) {
   const { db, colegioId } = props
-  const turmasDoColegio = db.turmas.filter((t) => t.colegioId === colegioId && t.id !== props.ignorarTurmaId)
+  const doColegio = turmasDoColegio(db, colegioId).filter((t) => t.id !== props.ignorarTurmaId)
   const proximaLetra = (serie: Serie) => {
-    const usadas = new Set(turmasDoColegio.filter((t) => t.serie === serie).map((t) => t.nome.toUpperCase()))
+    const usadas = new Set(doColegio.filter((t) => t.serie === serie).map((t) => t.nome.toUpperCase()))
     return 'ABCDEFGHIJ'.split('').find((l) => !usadas.has(l)) ?? ''
   }
-  const [dados, setDados] = useState<DadosTurma>(
-    props.inicial ?? { serie: 1, nome: proximaLetra(1), turno: 'Manhã', professorIds: [] },
-  )
+  const [dados, setDados] = useState<DadosTurma>(props.inicial ?? { serie: 1, nome: proximaLetra(1), turno: 'Manhã', professorIds: [] })
   const [erro, setErro] = useState<string | null>(null)
-  const professores = db.professores.filter((p) => p.colegioId === colegioId).sort((a, b) => compararTexto(a.nome, b.nome))
+  const professores = db.professores
+    .filter((p) => p.colegioId === colegioId && (p.ativo || dados.professorIds.includes(p.id)))
+    .sort((a, b) => compararTexto(a.nome, b.nome))
+
+  function alternarProfessor(id: Id) {
+    const ids = dados.professorIds.includes(id) ? dados.professorIds.filter((x) => x !== id) : [...dados.professorIds, id]
+    setDados({ ...dados, professorIds: ids })
+  }
 
   function enviar(e: FormEvent) {
     e.preventDefault()
     const nome = dados.nome.trim()
     if (!nome) return setErro('Informe a identificação da turma, como A ou B.')
-    if (turmasDoColegio.some((t) => t.serie === dados.serie && t.nome.toLowerCase() === nome.toLowerCase())) {
+    if (doColegio.some((t) => t.serie === dados.serie && t.nome.toLowerCase() === nome.toLowerCase())) {
       return setErro(`Já existe a turma ${turmaNome({ serie: dados.serie, nome })} neste colégio.`)
     }
     props.aoSalvar({ ...dados, nome })
@@ -148,18 +165,24 @@ export function FormularioTurma(props: {
             ))}
           </select>
         </label>
-        <label className="campo">
-          <span>Professor(a)</span>
-          <select value={dados.professorIds[0] ?? ''} onChange={(e) => setDados({ ...dados, professorIds: e.target.value ? [e.target.value] : [] })}>
-            <option value="">Sem professor</option>
-            {professores.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nome}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
+      <fieldset className="campo">
+        <legend>Professores da turma</legend>
+        {professores.length ? (
+          <div className="chips">
+            {professores.map((p) => (
+              <label key={p.id} className={`chip chip-escolha ${dados.professorIds.includes(p.id) ? 'escolhido' : ''}`}>
+                <input type="checkbox" checked={dados.professorIds.includes(p.id)} onChange={() => alternarProfessor(p.id)} />
+                {p.nome}
+                {!p.ativo && ' (desativado)'}
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="texto-2 pequeno">Ainda não há professores cadastrados. Cadastre-os em “Professores”.</p>
+        )}
+        <p className="campo-ajuda">Pode marcar mais de um, como o professor regente e um auxiliar. Todos veem e lançam a turma.</p>
+      </fieldset>
       {erro && <p className="erro-campo">{erro}</p>}
       <div className="form-acoes">
         <button type="submit" className="btn btn-primario">

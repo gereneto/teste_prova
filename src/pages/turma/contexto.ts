@@ -14,12 +14,14 @@ export interface ContextoTurma {
   colegio: Colegio
   lancamento: Lancamento | undefined
   alunos: Aluno[]
-  /** Início da área do perfil atual, para os links de volta. */
+  /** Início da área do perfil atual, para os links. */
   base: string
 }
 
+export type Erro = { erro: string; base: string }
+
 /** Dados de uma turma numa prova, a partir de /…/:cadernoId/:turmaId, já conferindo o acesso. */
-export function useContextoTurma(): ContextoTurma | { erro: string; base: string } {
+export function useContextoTurma(): ContextoTurma | Erro {
   const { cadernoId = '', turmaId = '' } = useParams()
   const db = useDb()
   const perfil = usePerfil()
@@ -34,4 +36,25 @@ export function useContextoTurma(): ContextoTurma | { erro: string; base: string
   if (!podeVerTurma(perfil, turma)) return { erro: 'Você não tem acesso a esta turma.', base }
   const lancamento = lancamentoDe(db, caderno.id, turma.id)
   return { db, perfil, caderno, avaliacao, turma, colegio, lancamento, alunos: alunosDaTurma(db, turma.id, lancamento), base }
+}
+
+export interface ContextoSoTurma {
+  db: Db
+  perfil: Perfil
+  turma: Turma
+  colegio: Colegio
+  base: string
+}
+
+/** Dados de uma turma a partir de /…/turma/:turmaId, já conferindo o acesso. */
+export function useTurmaDaRota(): ContextoSoTurma | Erro {
+  const { turmaId = '' } = useParams()
+  const db = useDb()
+  const perfil = usePerfil()
+  const base = perfil ? INICIO_DO_PAPEL[perfil.papel] : '/'
+  const turma = db.turmas.find((t) => t.id === turmaId)
+  const colegio = turma && db.colegios.find((c) => c.id === turma.colegioId)
+  if (!perfil || !turma || !colegio) return { erro: 'Esta turma não existe mais.', base }
+  if (!podeVerTurma(perfil, turma)) return { erro: 'Você não tem acesso a esta turma.', base }
+  return { db, perfil, turma, colegio, base }
 }

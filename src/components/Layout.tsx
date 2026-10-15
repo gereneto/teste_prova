@@ -1,29 +1,16 @@
-import { Repeat } from 'lucide-react'
-import { useEffect } from 'react'
+import { ALargeSmall, LifeBuoy, Repeat } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import logoSolar from '../assets/marca/logo-solar.png'
+import { pedidosPendentes, pessoaDoPerfil, turmasDoProfessor, type Pessoa } from '../lib/consultas'
+import { turmaNome } from '../lib/formato'
 import { useDb } from '../store/db'
 import { usePerfil } from '../store/perfil'
 import type { Db, Perfil } from '../types'
+import { AjudaConteudo } from './Ajuda'
+import { Janela } from './ui'
 
 type Papel = Perfil['papel']
-
-// Navegação em Title Case, como no site da Solar.
-const ABAS: Record<Papel, { para: string; rotulo: string; fim?: boolean }[]> = {
-  professor: [],
-  coordenacao: [
-    { para: '/coordenacao', rotulo: 'Painel', fim: true },
-    { para: '/coordenacao/turmas', rotulo: 'Turmas e Alunos' },
-    { para: '/coordenacao/professores', rotulo: 'Professores' },
-  ],
-  solar: [
-    { para: '/solar', rotulo: 'Painel', fim: true },
-    { para: '/solar/colegios', rotulo: 'Colégios' },
-    { para: '/solar/avaliacoes', rotulo: 'Avaliações' },
-    { para: '/solar/estatisticas', rotulo: 'Estatísticas' },
-    { para: '/solar/configuracoes', rotulo: 'Configurações' },
-  ],
-}
 
 export const INICIO_DO_PAPEL: Record<Papel, string> = {
   professor: '/professor',
@@ -31,27 +18,57 @@ export const INICIO_DO_PAPEL: Record<Papel, string> = {
   solar: '/solar',
 }
 
-const NOME_DO_PAPEL: Record<Papel, string> = {
+export const NOME_DO_PAPEL: Record<Papel, string> = {
   professor: 'Professor(a)',
   coordenacao: 'Coordenação',
   solar: 'Equipe Solar',
 }
 
-/** Papel e nome de quem está usando; null se o colégio ou o professor não existem mais. */
-export function identificarPerfil(perfil: Perfil, db: Db): { papel: string; nome: string } | null {
-  if (perfil.papel === 'solar') return { papel: NOME_DO_PAPEL.solar, nome: 'Rede Solar' }
-  const colegio = db.colegios.find((c) => c.id === perfil.colegioId)
-  if (!colegio) return null
-  if (perfil.papel === 'coordenacao') return { papel: NOME_DO_PAPEL.coordenacao, nome: colegio.nome }
-  const professor = db.professores.find((p) => p.id === perfil.professorId && p.colegioId === colegio.id)
-  return professor ? { papel: NOME_DO_PAPEL.professor, nome: `${professor.nome} · ${colegio.nome}` } : null
+const NOMES_PAPEL_SOLAR = { responsavel: 'Responsável', edicao: 'Edição', visualizacao: 'Só visualização' } as const
+
+/** Como a pessoa aparece no topo: o nome e, embaixo, o papel e o colégio. */
+export function descreverPessoa(db: Db, pessoa: Pessoa): { nome: string; detalhe: string } {
+  if (pessoa.papel === 'solar') return { nome: pessoa.nome, detalhe: `Equipe Solar · ${NOMES_PAPEL_SOLAR[pessoa.membro.papel]}` }
+  const colegioId = pessoa.papel === 'professor' ? pessoa.professor.colegioId : pessoa.coordenador.colegioId
+  const colegio = db.colegios.find((c) => c.id === colegioId)?.nome ?? ''
+  if (pessoa.papel === 'coordenacao') return { nome: pessoa.nome, detalhe: `${pessoa.coordenador.responsavel ? 'Responsável pela coordenação' : 'Coordenação'} · ${colegio}` }
+  const turmas = turmasDoProfessor(db, pessoa.professor.id).map(turmaNome)
+  return { nome: pessoa.nome, detalhe: [turmas.join(', '), colegio].filter(Boolean).join(' · ') }
 }
 
-/** Texto do perfil em uma linha, como "Coordenação · Colégio Monte Verde". */
-export function descreverPerfil(perfil: Perfil, db: Db): string | null {
-  if (perfil.papel === 'solar') return NOME_DO_PAPEL.solar
-  const identificado = identificarPerfil(perfil, db)
-  return identificado && `${perfil.papel === 'coordenacao' ? `${identificado.papel} · ` : ''}${identificado.nome}`
+interface Aba {
+  para: string
+  rotulo: string
+  fim?: boolean
+  contador?: number
+}
+
+// "Início" é sempre a lista do que fazer; "Resultados" é sempre onde ficam os números.
+function abasDo(db: Db, perfil: Perfil): Aba[] {
+  if (perfil.papel === 'professor') {
+    return [
+      { para: '/professor', rotulo: 'Início', fim: true },
+      ...turmasDoProfessor(db, perfil.professorId).map((t) => ({ para: `/professor/turma/${t.id}`, rotulo: turmaNome(t) })),
+    ]
+  }
+  if (perfil.papel === 'coordenacao') {
+    return [
+      { para: '/coordenacao', rotulo: 'Início', fim: true },
+      { para: '/coordenacao/pedidos', rotulo: 'Pedidos', contador: pedidosPendentes(db, perfil.colegioId).length },
+      { para: '/coordenacao/resultados', rotulo: 'Resultados' },
+      { para: '/coordenacao/turmas', rotulo: 'Turmas e alunos' },
+      { para: '/coordenacao/professores', rotulo: 'Professores' },
+      { para: '/coordenacao/equipe', rotulo: 'Equipe' },
+    ]
+  }
+  return [
+    { para: '/solar', rotulo: 'Início', fim: true },
+    { para: '/solar/colegios', rotulo: 'Colégios' },
+    { para: '/solar/avaliacoes', rotulo: 'Avaliações' },
+    { para: '/solar/resultados', rotulo: 'Resultados' },
+    { para: '/solar/equipe', rotulo: 'Equipe' },
+    { para: '/solar/configuracoes', rotulo: 'Configurações' },
+  ]
 }
 
 export function Marca() {
@@ -65,44 +82,93 @@ export function Marca() {
   )
 }
 
-/** Moldura das páginas de um papel. Sem perfil compatível, volta para a pergunta inicial. */
+const CHAVE_LETRA = 'prova-solar:letra-maior'
+
+function lerLetraMaior() {
+  try {
+    return localStorage.getItem(CHAVE_LETRA) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** "Letra maior" aumenta tudo em cerca de 15%; o aparelho guarda a escolha. */
+function useLetraMaior(): [boolean, (valor: boolean) => void] {
+  const [ativa, setAtiva] = useState(lerLetraMaior)
+  useEffect(() => {
+    document.documentElement.classList.toggle('letra-maior', ativa)
+  }, [ativa])
+  return [
+    ativa,
+    (valor) => {
+      setAtiva(valor)
+      try {
+        if (valor) localStorage.setItem(CHAVE_LETRA, '1')
+        else localStorage.removeItem(CHAVE_LETRA)
+      } catch {
+        // Sem armazenamento, a escolha vale até fechar a página.
+      }
+    },
+  ]
+}
+
+/** Moldura das páginas de um papel. Sem perfil compatível, volta para a entrada. */
 export function Area({ papel }: { papel: Papel }) {
   const perfil = usePerfil()
   const db = useDb()
   const navigate = useNavigate()
-  const identificado = perfil && perfil.papel === papel ? identificarPerfil(perfil, db) : null
-  if (!identificado) return <Navigate to="/" replace />
+  const [ajudaAberta, setAjudaAberta] = useState(false)
+  const [letraMaior, setLetraMaior] = useLetraMaior()
+  const pessoa = perfil && perfil.papel === papel ? pessoaDoPerfil(db, perfil) : null
+  if (!perfil || !pessoa) return <Navigate to="/" replace />
+  const quem = descreverPessoa(db, pessoa)
+  const abas = abasDo(db, perfil)
 
   return (
     <div className="app">
       <header className="topo">
         <div className="topo-interno">
           <Marca />
-          {ABAS[papel].length > 0 && (
-            <nav className="abas" aria-label="Seções">
-              <div className="abas-interno">
-                {ABAS[papel].map((aba) => (
-                  <NavLink key={aba.para} to={aba.para} end={aba.fim} className={({ isActive }) => `aba ${isActive ? 'ativa' : ''}`}>
-                    {aba.rotulo}
-                  </NavLink>
-                ))}
-              </div>
-            </nav>
-          )}
+          <nav className="abas" aria-label="Seções">
+            <div className="abas-interno">
+              {abas.map((aba) => (
+                <NavLink key={aba.para} to={aba.para} end={aba.fim} className={({ isActive }) => `aba ${isActive ? 'ativa' : ''}`}>
+                  {aba.rotulo}
+                  {aba.contador ? <span className="aba-contador">{aba.contador}</span> : null}
+                </NavLink>
+              ))}
+            </div>
+          </nav>
           <div className="topo-perfil">
             <span className="topo-descricao">
-              <span className="topo-papel">{identificado.papel}</span>
-              <span className="topo-nome">{identificado.nome}</span>
+              <span className="topo-nome">{quem.nome}</span>
+              <span className="topo-papel">{quem.detalhe}</span>
             </span>
-            <button className="btn btn-pequeno btn-fantasma" onClick={() => navigate('/')}>
-              <Repeat size={15} aria-hidden /> Trocar perfil
-            </button>
+            <div className="topo-botoes">
+              <button className="btn btn-pequeno btn-secundario" onClick={() => setAjudaAberta(true)}>
+                <LifeBuoy size={16} aria-hidden /> Preciso de ajuda
+              </button>
+              <button
+                className={`btn btn-pequeno btn-fantasma ${letraMaior ? 'btn-marcado' : ''}`}
+                aria-pressed={letraMaior}
+                aria-label="Letra maior"
+                onClick={() => setLetraMaior(!letraMaior)}
+              >
+                <ALargeSmall size={17} aria-hidden /> <span className="rotulo-botao">Letra maior</span>
+              </button>
+              <button className="btn btn-pequeno btn-fantasma" onClick={() => navigate('/')} aria-label="Trocar perfil">
+                <Repeat size={15} aria-hidden /> <span className="rotulo-botao">Trocar perfil</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
       <main className="conteudo">
         <Outlet />
       </main>
+      <Janela titulo="Precisa de ajuda?" aberta={ajudaAberta} aoFechar={() => setAjudaAberta(false)} larga>
+        <AjudaConteudo db={db} perfil={perfil} />
+      </Janela>
     </div>
   )
 }

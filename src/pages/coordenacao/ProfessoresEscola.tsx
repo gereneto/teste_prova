@@ -1,11 +1,12 @@
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, UserCheck, UserX, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { Cabecalho, Cartao, Vazio } from '../../components/ui'
-import { compararTexto, ordenarTurmas, turmaNome } from '../../lib/formato'
-import { criarProfessor, editarProfessor, removerProfessor } from '../../store/acoes'
+import { Aviso, Cabecalho, Cartao, Confirmacao, Selo, Vazio } from '../../components/ui'
+import { turmasDoColegio, turmasDoProfessor } from '../../lib/consultas'
+import { compararTexto, plural, serieNome, turmaNome } from '../../lib/formato'
+import { criarProfessor, definirProfessoresDaTurma, desativarProfessor, editarProfessor, reativarProfessor } from '../../store/acoes'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import type { Id, Professor } from '../../types'
+import { SERIES, type Id, type Professor } from '../../types'
 
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -14,16 +15,20 @@ export default function ProfessoresEscola() {
   const perfil = usePerfil()
   const [criando, setCriando] = useState(false)
   const [editandoId, setEditandoId] = useState<Id | null>(null)
+  const [desativando, setDesativando] = useState<Professor | null>(null)
+  const [salvo, setSalvo] = useState<Id | null>(null)
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   if (!colegio) return null
 
-  const professores = db.professores.filter((p) => p.colegioId === colegio.id).sort((a, b) => compararTexto(a.nome, b.nome))
-  const turmasDe = (id: Id) => ordenarTurmas(db.turmas.filter((t) => t.professorIds.includes(id)))
+  const professores = db.professores.filter((p) => p.colegioId === colegio.id).sort((a, b) => Number(b.ativo) - Number(a.ativo) || compararTexto(a.nome, b.nome))
+  const ativos = professores.filter((p) => p.ativo)
+  const turmas = turmasDoColegio(db, colegio.id)
+  const semProfessor = turmas.filter((t) => !t.professorIds.length)
+  const semTurma = ativos.filter((p) => !turmasDoProfessor(db, p.id).length)
 
-  function remover(professor: Professor) {
-    const turmas = turmasDe(professor.id)
-    const aviso = turmas.length ? ` ${turmas.map(turmaNome).join(', ')} ${turmas.length > 1 ? 'ficarão' : 'ficará'} sem professor.` : ''
-    if (confirm(`Remover ${professor.nome}?${aviso}`)) removerProfessor(professor.id)
+  function mudarProfessores(turmaId: Id, ids: Id[]) {
+    definirProfessoresDaTurma(turmaId, ids)
+    setSalvo(turmaId)
   }
 
   return (
@@ -31,7 +36,7 @@ export default function ProfessoresEscola() {
       <Cabecalho
         sobretitulo={colegio.nome}
         titulo="Professores"
-        subtitulo="Para associar um professor a uma turma, edite a turma em “Turmas e Alunos”."
+        subtitulo="Quem tem acesso ao site e qual professor cuida de cada turma."
         acoes={
           !criando && (
             <button className="btn btn-primario" onClick={() => setCriando(true)}>
@@ -52,7 +57,73 @@ export default function ProfessoresEscola() {
         />
       )}
 
-      <Cartao>
+      {(semProfessor.length > 0 || semTurma.length > 0) && (
+        <Aviso tom="atencao">
+          {[
+            semProfessor.length > 0 && `${semProfessor.map(turmaNome).join(', ')} ${semProfessor.length > 1 ? 'estão' : 'está'} sem professor.`,
+            semTurma.length > 0 && `${plural(semTurma.length, 'professor ainda não tem', 'professores ainda não têm')} turma: ${semTurma.map((p) => p.nome).join(', ')}.`,
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        </Aviso>
+      )}
+
+      <Cartao titulo="Quem cuida de cada turma" sub="Cada mudança é salva na hora. Uma turma pode ter mais de um professor, como o regente e um auxiliar.">
+        <div className="por-turma">
+          {SERIES.map((serie) => {
+            const doAno = turmas.filter((t) => t.serie === serie)
+            if (!doAno.length) return null
+            return (
+              <div key={serie} className="por-turma-ano">
+                <h3 className="subtitulo">{serieNome(serie)}</h3>
+                {doAno.map((turma) => {
+                  const disponiveis = ativos.filter((p) => !turma.professorIds.includes(p.id))
+                  return (
+                    <div key={turma.id} className="por-turma-linha">
+                      <strong>{turmaNome(turma)}</strong>
+                      <div className="chips">
+                        {turma.professorIds.map((id) => {
+                          const professor = db.professores.find((p) => p.id === id)
+                          return (
+                            <span key={id} className="chip">
+                              {professor?.nome ?? 'Professor removido'}
+                              <button
+                                type="button"
+                                className="chip-tirar"
+                                onClick={() => mudarProfessores(turma.id, turma.professorIds.filter((x) => x !== id))}
+                                aria-label={`Tirar ${professor?.nome ?? 'professor'} do ${turmaNome(turma)}`}
+                              >
+                                <X size={14} aria-hidden />
+                              </button>
+                            </span>
+                          )
+                        })}
+                        {!turma.professorIds.length && <Selo tom="ambar">Sem professor</Selo>}
+                      </div>
+                      <select
+                        className="select-compacto"
+                        value=""
+                        onChange={(e) => e.target.value && mudarProfessores(turma.id, [...turma.professorIds, e.target.value])}
+                        aria-label={`Incluir professor no ${turmaNome(turma)}`}
+                      >
+                        <option value="">{turma.professorIds.length ? '+ outro professor' : 'Escolher professor'}</option>
+                        {disponiveis.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nome}
+                          </option>
+                        ))}
+                      </select>
+                      {salvo === turma.id && <span className="ok-campo">Salvo</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </Cartao>
+
+      <Cartao titulo="Professores com acesso" sub="Na versão final, cada professor entra no site com o e-mail cadastrado aqui.">
         {!professores.length ? (
           <Vazio titulo="Nenhum professor cadastrado" />
         ) : (
@@ -85,26 +156,27 @@ export default function ProfessoresEscola() {
                       </td>
                     </tr>
                   ) : (
-                    <tr key={professor.id}>
-                      <td>{professor.nome}</td>
-                      <td>{professor.email || <span className="texto-2">—</span>}</td>
+                    <tr key={professor.id} className={professor.ativo ? '' : 'linha-inativa'}>
                       <td>
-                        <div className="chips">
-                          {turmasDe(professor.id).map((t) => (
-                            <span key={t.id} className="chip">
-                              {turmaNome(t)}
-                            </span>
-                          ))}
-                          {!turmasDe(professor.id).length && <span className="texto-2">Sem turma</span>}
-                        </div>
+                        {professor.nome} {!professor.ativo && <Selo>Acesso desativado</Selo>}
+                      </td>
+                      <td>{professor.email || <span className="texto-2">sem e-mail</span>}</td>
+                      <td>
+                        {turmasDoProfessor(db, professor.id).map(turmaNome).join(', ') || <span className="texto-2">sem turma</span>}
                       </td>
                       <td className="acoes">
                         <button className="btn btn-pequeno btn-fantasma" onClick={() => setEditandoId(professor.id)}>
                           <Pencil size={14} aria-hidden /> Editar
                         </button>
-                        <button className="btn btn-pequeno btn-fantasma" onClick={() => remover(professor)}>
-                          <Trash2 size={14} aria-hidden /> Remover
-                        </button>
+                        {professor.ativo ? (
+                          <button className="btn btn-pequeno btn-fantasma" onClick={() => setDesativando(professor)}>
+                            <UserX size={14} aria-hidden /> Desativar
+                          </button>
+                        ) : (
+                          <button className="btn btn-pequeno btn-fantasma" onClick={() => reativarProfessor(professor.id)}>
+                            <UserCheck size={14} aria-hidden /> Reativar
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ),
@@ -114,6 +186,25 @@ export default function ProfessoresEscola() {
           </div>
         )}
       </Cartao>
+
+      <Confirmacao
+        titulo={desativando ? `Desativar o acesso de ${desativando.nome}?` : ''}
+        aberta={desativando !== null}
+        rotuloConfirmar="Desativar o acesso"
+        aoConfirmar={() => {
+          if (desativando) desativarProfessor(desativando.id)
+          setDesativando(null)
+        }}
+        aoFechar={() => setDesativando(null)}
+      >
+        {desativando && (
+          <p>
+            A pessoa deixa de entrar no site
+            {turmasDoProfessor(db, desativando.id).length > 0 && ` e sai de ${turmasDoProfessor(db, desativando.id).map(turmaNome).join(', ')}`}. Nada do que
+            ela lançou se perde, e o nome continua no histórico. Dá para reativar depois.
+          </p>
+        )}
+      </Confirmacao>
     </>
   )
 }
@@ -132,7 +223,8 @@ function FormularioProfessor(props: {
     e.preventDefault()
     const limpo = { nome: nome.trim().replace(/\s+/g, ' '), email: email.trim().toLowerCase() }
     if (!limpo.nome) return setErro('Informe o nome do professor.')
-    if (limpo.email && !EMAIL_VALIDO.test(limpo.email)) return setErro('Esse e-mail não parece válido. Confira ou deixe em branco.')
+    if (!limpo.email) return setErro('Informe o e-mail: na versão final, é com ele que o professor entra no site.')
+    if (!EMAIL_VALIDO.test(limpo.email)) return setErro('Esse e-mail não parece válido. Confira.')
     props.aoSalvar(limpo)
   }
 
@@ -152,7 +244,7 @@ function FormularioProfessor(props: {
           />
         </label>
         <label className="campo">
-          <span>E-mail (opcional)</span>
+          <span>E-mail</span>
           <input
             type="email"
             value={email}

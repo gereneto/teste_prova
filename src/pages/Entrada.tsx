@@ -1,77 +1,66 @@
-import { ArrowLeft, ArrowRight, Building2, ChevronRight, ClipboardList, RotateCcw, Search, Users, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Building2, ClipboardList, RotateCcw, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import logoBranco from '../assets/marca/logo-solar-branco.png'
-import { descreverPerfil, INICIO_DO_PAPEL } from '../components/Layout'
-import { turmasDoColegio, turmasDoProfessor } from '../lib/consultas'
-import { compararTexto, normalizar, plural, turmaNome } from '../lib/formato'
+import { INICIO_DO_PAPEL } from '../components/Layout'
+import { Confirmacao } from '../components/ui'
+import { pessoaDoPerfil, turmasDoProfessor } from '../lib/consultas'
+import { listaEmTexto, turmaNome } from '../lib/formato'
+import { perfilDeTeste, pessoasDeTeste } from '../lib/teste'
 import { restaurarDadosDeExemplo } from '../store/acoes'
 import { useDb } from '../store/db'
 import { definirPerfil, usePerfil } from '../store/perfil'
-import type { Id, Perfil } from '../types'
+import type { Perfil } from '../types'
 
 type Papel = Perfil['papel']
 
 const OPCOES: { papel: Papel; titulo: string; texto: string; Icone: LucideIcon }[] = [
-  { papel: 'professor', titulo: 'Professor(a)', texto: 'Lança as respostas dos alunos e vê os resultados das suas turmas.', Icone: ClipboardList },
-  { papel: 'coordenacao', titulo: 'Coordenação', texto: 'Cadastra turmas, professores e alunos e acompanha o colégio inteiro.', Icone: Users },
-  { papel: 'solar', titulo: 'Equipe Solar', texto: 'Cadastra colégios e provas e acompanha os resultados de toda a Rede.', Icone: Building2 },
+  {
+    papel: 'professor',
+    titulo: 'Professor(a)',
+    texto: 'Lança as respostas da turma, pede mudanças na lista de alunos e vê os resultados só da própria turma.',
+    Icone: ClipboardList,
+  },
+  {
+    papel: 'coordenacao',
+    titulo: 'Coordenação',
+    texto: 'Cuida das turmas, dos professores e dos alunos, responde aos pedidos e vê os resultados de todas as turmas do colégio.',
+    Icone: Users,
+  },
+  {
+    papel: 'solar',
+    titulo: 'Equipe Solar',
+    texto: 'Prepara as provas, cadastra os colégios e vê os resultados de toda a rede, por turma e por colégio.',
+    Icone: Building2,
+  },
 ]
 
 export default function Entrada() {
   const db = useDb()
   const perfilAtual = usePerfil()
   const navigate = useNavigate()
-  const [papel, setPapel] = useState<Papel | null>(null)
-  const [colegioId, setColegioId] = useState<Id | null>(null)
-  const [busca, setBusca] = useState('')
+  const [confirmando, setConfirmando] = useState(false)
+  const pessoas = pessoasDeTeste(db)
+  const pessoaAtual = perfilAtual ? pessoaDoPerfil(db, perfilAtual) : null
 
-  const descricaoAtual = perfilAtual ? descreverPerfil(perfilAtual, db) : null
+  const quemEntra: Record<Papel, string | null> = {
+    professor: pessoas.professor && `Entra como ${pessoas.professor.nome}, ${listaEmTexto(turmasDoProfessor(db, pessoas.professor.id).map((t) => `do ${turmaNome(t)}`))}`,
+    coordenacao: pessoas.coordenador && `Entra como ${pessoas.coordenador.nome}, ${pessoas.coordenador.responsavel ? 'responsável pela coordenação' : 'da coordenação'}`,
+    solar: pessoas.membro && `Entra como ${pessoas.membro.nome}, ${pessoas.membro.papel === 'responsavel' ? 'responsável pela equipe Solar' : 'da equipe Solar'}`,
+  }
 
-  function entrar(perfil: Perfil) {
+  function entrar(papel: Papel) {
+    const perfil = perfilDeTeste(db, papel)
+    if (!perfil) return
     definirPerfil(perfil)
-    navigate(INICIO_DO_PAPEL[perfil.papel])
-  }
-
-  function escolherPapel(escolhido: Papel) {
-    if (escolhido === 'solar') entrar({ papel: 'solar' })
-    else setPapel(escolhido)
-  }
-
-  function escolherColegio(id: Id) {
-    if (papel === 'coordenacao') entrar({ papel: 'coordenacao', colegioId: id })
-    else {
-      setColegioId(id)
-      setBusca('')
-    }
-  }
-
-  function voltar() {
-    if (colegioId) setColegioId(null)
-    else setPapel(null)
+    navigate(INICIO_DO_PAPEL[papel])
   }
 
   async function restaurar() {
-    if (!confirm('Apagar tudo o que foi feito neste navegador e voltar aos dados de exemplo?')) return
+    setConfirmando(false)
     await restaurarDadosDeExemplo()
     definirPerfil(null)
-    setPapel(null)
-    setColegioId(null)
   }
-
-  const colegio = db.colegios.find((c) => c.id === colegioId)
-  const professores = colegio
-    ? db.professores
-        .filter((p) => p.colegioId === colegio.id)
-        .map((p) => ({ professor: p, turmas: turmasDoProfessor(db, p.id) }))
-        .filter(({ professor }) => normalizar(professor.nome).includes(normalizar(busca.trim())))
-        .sort((a, b) => {
-          const ta = a.turmas[0]
-          const tb = b.turmas[0]
-          if (ta && tb) return ta.serie - tb.serie || compararTexto(ta.nome, tb.nome)
-          return ta ? -1 : tb ? 1 : compararTexto(a.professor.nome, b.professor.nome)
-        })
-    : []
 
   return (
     <div className="entrada">
@@ -79,103 +68,62 @@ export default function Entrada() {
         <div className="entrada-hero-conteudo">
           <img src={logoBranco} alt="Solar Colégios" className="entrada-hero-logo" />
           <h1>Prova Solar</h1>
-          <p className="entrada-hero-sub">Lançamento e resultados das avaliações da Rede</p>
+          <p className="entrada-hero-sub">Lançamento e resultados da avaliação anual da Rede</p>
           <span className="selo selo-ambar">Versão de teste</span>
         </div>
       </section>
 
       <main className="entrada-corpo">
-        {!papel && (
-          <section className="entrada-passo">
-            <p className="sobretitulo">Entrada</p>
-            <h2>Quem é você?</h2>
-            <p className="entrada-sub">Nesta versão de teste não há senha: escolha um perfil para navegar.</p>
-            {perfilAtual && descricaoAtual && (
-              <button className="btn btn-secundario entrada-continuar" onClick={() => navigate(INICIO_DO_PAPEL[perfilAtual.papel])}>
-                Continuar como {descricaoAtual} <ArrowRight size={16} aria-hidden />
+        <section className="entrada-passo">
+          <p className="sobretitulo">Entrada</p>
+          <h2>Que visão você quer ver?</h2>
+          <p className="entrada-sub">
+            Nesta versão de teste não há senha. Cada perfil entra com uma pessoa fixa{pessoas.colegio ? ` do ${pessoas.colegio.nome}` : ''}, para
+            você comparar o que cada uma vê.
+          </p>
+          {perfilAtual && pessoaAtual && (
+            <button className="btn btn-secundario entrada-continuar" onClick={() => navigate(INICIO_DO_PAPEL[perfilAtual.papel])}>
+              Continuar como {pessoaAtual.nome} <ArrowRight size={16} aria-hidden />
+            </button>
+          )}
+          <div className="entrada-opcoes">
+            {OPCOES.map(({ papel, titulo, texto, Icone }) => (
+              <button key={papel} className="entrada-opcao" onClick={() => entrar(papel)} disabled={!quemEntra[papel]}>
+                <span className="entrada-icone">
+                  <Icone size={24} aria-hidden />
+                </span>
+                <span className="entrada-opcao-titulo">{titulo}</span>
+                <span className="entrada-opcao-quem">{quemEntra[papel] ?? 'Não há ninguém com este perfil nos dados de teste.'}</span>
+                <span className="entrada-opcao-texto">{texto}</span>
+                <span className="entrada-opcao-entrar">
+                  Entrar <ArrowRight size={16} aria-hidden />
+                </span>
               </button>
-            )}
-            <div className="entrada-opcoes">
-              {OPCOES.map(({ papel: p, titulo, texto, Icone }) => (
-                <button key={p} className="entrada-opcao" onClick={() => escolherPapel(p)}>
-                  <span className="entrada-icone">
-                    <Icone size={24} aria-hidden />
-                  </span>
-                  <span className="entrada-opcao-titulo">{titulo}</span>
-                  <span className="entrada-opcao-texto">{texto}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {papel && !colegio && (
-          <section className="entrada-passo">
-            <button className="btn btn-fantasma btn-pequeno" onClick={voltar}>
-              <ArrowLeft size={15} aria-hidden /> Voltar
-            </button>
-            <h2>De qual colégio você é?</h2>
-            <p className="entrada-sub">Na versão final, o colégio já vem do seu login.</p>
-            <ul className="entrada-lista">
-              {[...db.colegios]
-                .sort((a, b) => compararTexto(a.nome, b.nome))
-                .map((c) => (
-                  <li key={c.id}>
-                    <button className="entrada-item" onClick={() => escolherColegio(c.id)}>
-                      <span>
-                        <span className="entrada-item-titulo">{c.nome}</span>
-                        <span className="entrada-item-sub">
-                          {c.cidade}/{c.uf} · {plural(turmasDoColegio(db, c.id).length, 'turma', 'turmas')}
-                        </span>
-                      </span>
-                      <ChevronRight size={20} aria-hidden />
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          </section>
-        )}
-
-        {papel === 'professor' && colegio && (
-          <section className="entrada-passo">
-            <button className="btn btn-fantasma btn-pequeno" onClick={voltar}>
-              <ArrowLeft size={15} aria-hidden /> Voltar
-            </button>
-            <h2>Qual é o seu nome?</h2>
-            <p className="entrada-sub">Professores do {colegio.nome}. Na versão final, isso também vem do login.</p>
-            <label className="busca">
-              <Search size={18} aria-hidden />
-              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pelo nome" aria-label="Buscar professor pelo nome" autoFocus />
-            </label>
-            <ul className="entrada-lista">
-              {professores.map(({ professor, turmas }) => (
-                <li key={professor.id}>
-                  <button className="entrada-item" onClick={() => entrar({ papel: 'professor', colegioId: colegio.id, professorId: professor.id })}>
-                    <span>
-                      <span className="entrada-item-titulo">{professor.nome}</span>
-                      <span className="entrada-item-sub">
-                        {turmas.length ? turmas.map((t) => `${turmaNome(t)} · ${t.turno}`).join(', ') : 'Sem turma'}
-                      </span>
-                    </span>
-                    <ChevronRight size={20} aria-hidden />
-                  </button>
-                </li>
-              ))}
-              {!professores.length && <li className="texto-2">Ninguém com esse nome.</li>}
-            </ul>
-          </section>
-        )}
+            ))}
+          </div>
+        </section>
 
         <footer className="entrada-rodape">
           <p>
-            Versão de teste, com dados fictícios. O que você lançar fica guardado só neste navegador: outras pessoas não veem as suas
-            alterações.
+            Versão de teste, com dados fictícios. O que você muda fica guardado só neste navegador: outras pessoas não veem as suas alterações.
+            Duas abas abertas ao mesmo tempo, cada uma num perfil, mostram uma mudança aparecendo na outra.
           </p>
-          <button className="btn btn-pequeno btn-fantasma" onClick={restaurar}>
+          <button className="btn btn-pequeno btn-fantasma" onClick={() => setConfirmando(true)}>
             <RotateCcw size={15} aria-hidden /> Restaurar dados de exemplo
           </button>
         </footer>
       </main>
+
+      <Confirmacao
+        titulo="Voltar aos dados de exemplo?"
+        aberta={confirmando}
+        rotuloConfirmar="Apagar o que fiz e restaurar"
+        perigo
+        aoConfirmar={restaurar}
+        aoFechar={() => setConfirmando(false)}
+      >
+        <p>Tudo o que foi lançado, cadastrado ou alterado neste navegador será apagado, e os dados fictícios voltam ao começo.</p>
+      </Confirmacao>
     </div>
   )
 }
