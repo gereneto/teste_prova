@@ -1,7 +1,7 @@
-"""Gera os PDFs fictícios de caderno de prova usados nos dados de exemplo.
+"""Gera os PDFs fictícios das provas usadas nos dados de exemplo.
 
 Uso: python scripts/gerar_pdfs_exemplo.py
-Saída: public/exemplos/caderno-exemplo-{1..5}ano.pdf
+Saída: public/exemplos/prova-exemplo-{1..5}ano.pdf
 """
 from pathlib import Path
 
@@ -11,25 +11,25 @@ from reportlab.pdfgen import canvas
 
 DESTINO = Path(__file__).resolve().parent.parent / "public" / "exemplos"
 
-# Mesma distribuição de disciplinas usada em src/data/seed.ts
-DISCIPLINAS_1_2 = ["Português"] * 6 + ["Matemática"] * 6 + ["Ciências"] * 2 + ["História", "Geografia"]
-DISCIPLINAS_3_5 = ["Português"] * 8 + ["Matemática"] * 8 + ["Ciências"] * 2 + ["História", "Geografia"]
+# Mesma distribuição de disciplinas usada em src/data/seed.ts: só Português e Matemática.
+DISCIPLINAS_1_2 = ["Português"] * 8 + ["Matemática"] * 8
+DISCIPLINAS_3_5 = ["Português"] * 10 + ["Matemática"] * 10
 
 
 def capa(c, ano):
     largura, altura = A4
     c.setFont("Helvetica-Bold", 26)
-    c.drawCentredString(largura / 2, altura - 70 * mm, "Avaliação diagnóstica")
+    c.drawCentredString(largura / 2, altura - 70 * mm, "Avaliação anual")
     c.setFont("Helvetica", 18)
     c.drawCentredString(largura / 2, altura - 82 * mm, f"{ano}º ano do Ensino Fundamental")
     c.setFont("Helvetica", 12)
-    c.drawCentredString(largura / 2, altura - 100 * mm, "Caderno de exemplo, com conteúdo fictício, para testar o site Prova Solar")
+    c.drawCentredString(largura / 2, altura - 100 * mm, "Prova de exemplo, com conteúdo fictício, para testar o site Prova Solar")
     c.rect(25 * mm, altura - 150 * mm, largura - 50 * mm, 30 * mm)
     c.drawString(30 * mm, altura - 130 * mm, "Nome: ______________________________________________")
     c.drawString(30 * mm, altura - 142 * mm, "Turma: ________      Nº: ______      Data: ____/____/______")
     c.setFont("Helvetica-Oblique", 11)
-    instrucao = ("Marque a alternativa neste caderno." if ano <= 2
-                 else "Marque suas respostas na folha de respostas.")
+    instrucao = ("Marque suas respostas na folha de respostas." if ano == 5
+                 else "Marque a alternativa nesta prova.")
     c.drawCentredString(largura / 2, altura - 165 * mm, instrucao)
     c.showPage()
 
@@ -48,7 +48,7 @@ def questoes(c, ano):
         c.drawString(20 * mm, y - 8 * mm, "Enunciado de exemplo. Aqui entraria o texto, a imagem ou o problema da questão.")
         for i, letra in enumerate("ABCD"):
             linha = y - (17 + 7 * i) * mm
-            if ano <= 2:
+            if ano < 5:
                 c.circle(23 * mm, linha + 1.3 * mm, 2.6 * mm)
                 c.drawString(29 * mm, linha, f"{letra}) Alternativa de exemplo")
             else:
@@ -60,9 +60,9 @@ def questoes(c, ano):
 def main():
     DESTINO.mkdir(parents=True, exist_ok=True)
     for ano in range(1, 6):
-        arquivo = DESTINO / f"caderno-exemplo-{ano}ano.pdf"
+        arquivo = DESTINO / f"prova-exemplo-{ano}ano.pdf"
         c = canvas.Canvas(str(arquivo), pagesize=A4)
-        c.setTitle(f"Caderno de exemplo — {ano}º ano")
+        c.setTitle(f"Prova de exemplo — {ano}º ano")
         capa(c, ano)
         questoes(c, ano)
         c.save()

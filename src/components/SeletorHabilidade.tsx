@@ -2,7 +2,7 @@ import { X } from 'lucide-react'
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { buscarHabilidade, habilidadesDoAno, type Habilidade } from '../data/bncc'
 import { normalizar } from '../lib/formato'
-import type { Serie } from '../types'
+import { DISCIPLINAS_DA_PROVA, type Serie } from '../types'
 
 const MAXIMO_OPCOES = 40
 
@@ -23,6 +23,7 @@ export function SeletorHabilidade(props: {
   const opcoes = useMemo(() => {
     const termos = normalizar(busca).split(/\s+/).filter(Boolean)
     return habilidadesDoAno(serie)
+      .filter((h) => DISCIPLINAS_DA_PROVA.includes(h.componente))
       .filter((h) => {
         const texto = normalizar(`${h.codigo} ${h.componente} ${h.descricao} ${h.objeto}`)
         return termos.every((t) => texto.includes(t))

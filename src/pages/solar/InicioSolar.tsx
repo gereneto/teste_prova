@@ -1,7 +1,6 @@
 import { ArrowRight, ChartColumn, ClipboardCopy, Mail, Phone } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { DIAS_PEDIDO_PARADO } from '../../components/CartaoPedido'
 import { Barras, Cabecalho, Cartao, LembreteCooperacao, Progresso, Selo } from '../../components/ui'
 import {
   alunosAtivos,
@@ -13,14 +12,16 @@ import {
   descreverPeriodo,
   etapaAvaliacao,
   lancamentoDe,
+  membroSolarDoColegio,
   nomesProfessores,
-  pedidosPendentes,
   permissoesDe,
+  podeDefinirResponsavel,
   pessoaDoPerfil,
   turmasDoColegio,
 } from '../../lib/consultas'
 import { analisarQuestoes, avaliados, coletarResultados, mediaPct, progressoDe } from '../../lib/estatisticas'
-import { compararTexto, dataCurta, descreverPrazo, diasEntre, hojeIso, plural, primeiroNome, serieNome, turmaNome } from '../../lib/formato'
+import { compararTexto, dataCurta, descreverPrazo, plural, primeiroNome, serieNome, turmaNome } from '../../lib/formato'
+import { camposFaltando } from '../../lib/alunos'
 import { iniciaisRepetidas } from '../../lib/iniciais'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
@@ -70,19 +71,16 @@ export default function InicioSolar() {
   }
   for (const colegio of colegios) {
     if (!contatoDoColegio(db, colegio.id)) {
-      pendencias.push({ chave: `resp-${colegio.id}`, texto: <><strong>{colegio.nome}</strong> ainda não tem responsável pela coordenação.</>, acao: { rotulo: 'Definir responsável', para: `/solar/colegios/${colegio.id}` } })
-    }
-    const parados = pedidosPendentes(db, colegio.id).filter((p) => diasEntre(p.criadoEm, hojeIso()) > DIAS_PEDIDO_PARADO)
-    if (parados.length) {
-      const dias = Math.max(...parados.map((p) => diasEntre(p.criadoEm, hojeIso())))
+      const quem = membroSolarDoColegio(db, colegio)
       pendencias.push({
-        chave: `ped-${colegio.id}`,
+        chave: `resp-${colegio.id}`,
         texto: (
           <>
-            <strong>{colegio.nome}</strong>: {plural(parados.length, 'pedido de professor espera', 'pedidos de professores esperam')} a coordenação há até {dias} dias.
+            <strong>{colegio.nome}</strong> ainda não tem responsável pela coordenação.
+            {!podeDefinirResponsavel(pessoa, colegio) && quem && ` Quem define é ${quem.nome}.`}
           </>
         ),
-        acao: { rotulo: 'Ver colégio', para: `/solar/colegios/${colegio.id}` },
+        acao: { rotulo: podeDefinirResponsavel(pessoa, colegio) ? 'Definir responsável' : 'Ver colégio', para: `/solar/colegios/${colegio.id}` },
       })
     }
   }
@@ -127,7 +125,7 @@ export default function InicioSolar() {
           <div className="kpi-rotulo">turmas em {db.config.anoLetivo}</div>
         </div>
         <div className="kpi kpi-pequeno">
-          <div className="kpi-valor">{db.alunos.filter((a) => a.ativo && !a.pendente).length.toLocaleString('pt-BR')}</div>
+          <div className="kpi-valor">{db.alunos.filter((a) => a.ativo).length.toLocaleString('pt-BR')}</div>
           <div className="kpi-rotulo">alunos</div>
         </div>
         <div className="kpi kpi-pequeno">
@@ -262,7 +260,7 @@ function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem
   )
 }
 
-/** Se cada colégio está pronto: responsável, professores nas turmas, alunos cadastrados e com ano de entrada. */
+/** Se cada colégio está pronto: responsável, professores nas turmas, alunos cadastrados e com os dados completos. */
 function Prontidao({ db }: { db: Db }) {
   const colegios = [...db.colegios].sort((a, b) => compararTexto(a.nome, b.nome))
   return (
@@ -272,12 +270,12 @@ function Prontidao({ db }: { db: Db }) {
           <thead>
             <tr>
               <th>Colégio</th>
+              <th>Pela Solar</th>
               <th>Responsável</th>
               <th className="num">Turmas com professor</th>
               <th className="num">Alunos</th>
-              <th className="num">Sem ano de entrada</th>
+              <th className="num">Com dados faltando</th>
               <th className="num">Iniciais repetidas</th>
-              <th className="num">Pedidos esperando</th>
             </tr>
           </thead>
           <tbody>
@@ -285,21 +283,20 @@ function Prontidao({ db }: { db: Db }) {
               const turmas = turmasDoColegio(db, colegio.id)
               const alunos = turmas.flatMap((t) => alunosAtivos(db, t.id))
               const comProfessor = turmas.filter((t) => t.professorIds.length).length
-              const semAno = alunos.filter((a) => a.anoIngresso == null).length
+              const incompletos = alunos.filter((a) => camposFaltando(a).length).length
               const repetidas = turmas.filter((t) => iniciaisRepetidas(alunosAtivos(db, t.id)).size > 0).length
-              const pedidos = pedidosPendentes(db, colegio.id).length
               const responsavel = contatoDoColegio(db, colegio.id)
               return (
                 <tr key={colegio.id}>
                   <td>
                     <Link to={`/solar/colegios/${colegio.id}`}>{colegio.nome}</Link>
                   </td>
+                  <td>{membroSolarDoColegio(db, colegio)?.nome ?? <Selo tom="ambar">Ninguém</Selo>}</td>
                   <td>{responsavel ? responsavel.nome : <Selo tom="ambar">Sem responsável</Selo>}</td>
                   <td className="num">{comProfessor === turmas.length ? `${comProfessor} de ${turmas.length}` : <Selo tom="ambar">{`${comProfessor} de ${turmas.length}`}</Selo>}</td>
                   <td className="num">{alunos.length}</td>
-                  <td className="num">{semAno ? <Selo tom="ambar">{String(semAno)}</Selo> : <span className="texto-2">0</span>}</td>
+                  <td className="num">{incompletos ? <Selo tom="ambar">{String(incompletos)}</Selo> : <span className="texto-2">0</span>}</td>
                   <td className="num">{repetidas ? `${plural(repetidas, 'turma', 'turmas')}` : <span className="texto-2">0</span>}</td>
-                  <td className="num">{pedidos ? <Selo tom="ambar">{String(pedidos)}</Selo> : <span className="texto-2">0</span>}</td>
                 </tr>
               )
             })}
@@ -323,7 +320,7 @@ function ResumoResultados({ db, avaliacao }: { db: Db; avaliacao: Avaliacao }) {
   return (
     <Cartao
       titulo={`Resultados até agora · ${avaliacao.titulo}`}
-      sub={`Média de acertos da rede: ${mediaPct(resultados) == null ? '—' : `${Math.round(mediaPct(resultados)!)}%`}. Colégios em ordem alfabética.`}
+      sub={`Acerto médio da rede: ${mediaPct(resultados) == null ? '—' : `${Math.round(mediaPct(resultados)!)}%`}. Colégios em ordem alfabética.`}
       acoes={
         <Link className="btn" to={`/solar/resultados?avaliacao=${avaliacao.id}`}>
           <ChartColumn size={16} aria-hidden /> Ver tudo
@@ -333,7 +330,7 @@ function ResumoResultados({ db, avaliacao }: { db: Db; avaliacao: Avaliacao }) {
       <LembreteCooperacao chave="solar-inicio">
         Use estas comparações para descobrir onde apoiar e quem pode compartilhar o que deu certo, não para classificar colégios ou professores.
       </LembreteCooperacao>
-      <Barras config={db.config} itens={porColegio} />
+      <Barras itens={porColegio} />
     </Cartao>
   )
 }

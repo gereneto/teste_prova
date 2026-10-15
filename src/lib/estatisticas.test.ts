@@ -32,9 +32,9 @@ const caderno = (questoes: Questao[]): Caderno => ({
   pdf: null,
 })
 
-const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', iniciais: 'A.B.', numero: 1, anoIngresso, ativo: true })
+const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', numero: '1', iniciais: 'A.B.', sexo: 'F', anoIngresso, ativo: true })
 const turma: Turma = { id: 't', colegioId: 'c', anoLetivo: 2026, serie: 3, nome: 'A', turno: 'Manhã', professorIds: [] }
-const colegio: Colegio = { id: 'c', nome: 'C', cidade: '', uf: '' }
+const colegio: Colegio = { id: 'c', nome: 'C', cidade: '', uf: '', membroSolarId: null }
 
 function resultado(cad: Caderno, id: string, marcas: string): ResultadoAluno {
   return { aluno: aluno(id), turma, colegio, caderno: cad, situacao: 'presente', completo: true, marcas, correcao: corrigir(cad, marcas) }
@@ -101,17 +101,15 @@ describe('progressoDaTurma', () => {
   })
 })
 
-describe('faixas', () => {
-  const config = { faixas: [40, 60, 80] as [number, number, number], anoLetivo: 2026 }
-
-  it('usa os limites como mínimo de cada faixa', () => {
-    expect([0, 39.9, 40, 59, 60, 79.9, 80, 100].map((p) => faixaDe(p, config))).toEqual([0, 0, 1, 1, 2, 2, 3, 3])
+describe('faixas de acerto', () => {
+  it('vão de 20 em 20 pontos', () => {
+    expect([0, 19.9, 20, 39.9, 40, 59, 60, 79.9, 80, 100].map(faixaDe)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4])
   })
 
-  it('conta os alunos por faixa', () => {
+  it('contam os alunos de cada faixa', () => {
     const cad = caderno([q('A'), q('B'), q('C'), q('D'), q('A')])
     const lista = [resultado(cad, 'a', 'ABCDA'), resultado(cad, 'b', 'ABCCC'), resultado(cad, 'c', 'CCCCC')]
-    expect(contarFaixas(lista, config)).toEqual([1, 0, 1, 1])
+    expect(contarFaixas(lista)).toEqual([0, 1, 0, 1, 1])
   })
 })
 

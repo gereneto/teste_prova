@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import { Aviso, Explicacao, Progresso, Selo, Vazio } from '../../components/ui'
 import { corrigir, ehNovo, marcaEm, progressoDaTurma, questaoValida, respostaCompleta } from '../../lib/estatisticas'
 import { dataLonga, plural } from '../../lib/formato'
-import { identificacao } from '../../lib/iniciais'
+import { alunoEmTexto, identificacao } from '../../lib/iniciais'
 import { concluirLancamento, definirSituacao, marcarQuestao } from '../../store/acoes'
 import { useSalvando } from '../../store/db'
 import { BRANCO, LETRAS, RASURA, VAZIO, type Aluno, type Caderno, type Id, type RespostaAluno, type Situacao } from '../../types'
@@ -89,7 +89,7 @@ function TelaLancamento(contexto: ContextoTurma) {
     if (!aluno) return
     if (situacao !== 'presente') {
       const motivo = situacao === 'faltou' ? 'falta' : 'prova adaptada'
-      setMensagem({ erro: true, texto: `O nº ${aluno.numero} está com ${motivo}. Desfaça para lançar as respostas.` })
+      setMensagem({ erro: true, texto: `O ${alunoEmTexto(aluno)} está com ${motivo}. Desfaça para lançar as respostas.` })
       return
     }
     if (indice >= total) {
@@ -129,7 +129,7 @@ function TelaLancamento(contexto: ContextoTurma) {
       const faltam = caderno.questoes.filter((q, i) => !q.anulada && marcaEm(marcas, i) === VAZIO).length
       setMensagem({
         erro: true,
-        texto: `Falta lançar ${plural(faltam, 'questão', 'questões')} do nº ${aluno.numero}. Se o aluno não respondeu, use “Em branco”.`,
+        texto: `Falta lançar ${plural(faltam, 'questão', 'questões')} do ${alunoEmTexto(aluno)}. Se o aluno não respondeu, use “Em branco”.`,
       })
       return
     }
@@ -293,13 +293,12 @@ function TelaLancamento(contexto: ContextoTurma) {
             <div className="lanc-aluno">
               <div className="lanc-aluno-id">
                 <span className="lanc-numero">
-                  <span className="lanc-numero-rotulo">Nº</span> {aluno.numero}
+                  <span className="lanc-numero-rotulo">Nº</span> {aluno.numero || '—'}
                 </span>
                 <div>
                   <h2>
                     {aluno.iniciais}
                     {ehNovo(aluno, turma.anoLetivo) && <span className="tag-novo">Novo no colégio</span>}
-                    {aluno.pendente && <Selo tom="ambar">Aguardando a coordenação</Selo>}
                     {!aluno.ativo && <Selo>Não está mais na turma</Selo>}
                   </h2>
                   <p className="texto-2 pequeno">
@@ -320,17 +319,25 @@ function TelaLancamento(contexto: ContextoTurma) {
             </div>
 
             <p className="lanc-confira">
-              Confira se o número escrito na prova é o <strong>{aluno.numero}</strong> antes de lançar.
+              {aluno.numero ? (
+                <>
+                  Confira se o número escrito na prova é o <strong>{aluno.numero}</strong> antes de lançar.
+                </>
+              ) : (
+                <>Este aluno está sem número de chamada. Confira as iniciais e complete o número na aba Alunos.</>
+              )}
               {xara && (
                 <span className="lanc-xara">
-                  <TriangleAlert size={15} aria-hidden /> Atenção: há outro {aluno.iniciais} nesta turma, o nº {xara.numero}.
+                  <TriangleAlert size={15} aria-hidden /> Atenção: há outro {aluno.iniciais} nesta turma, o {alunoEmTexto(xara)}.
                 </span>
               )}
             </p>
 
             {situacao !== 'presente' ? (
               <div className="lanc-ausente">
-                <p>O nº {aluno.numero} {situacao === 'faltou' ? 'faltou' : 'fez uma prova adaptada'} e fica fora das médias da turma.</p>
+                <p>
+                  O {alunoEmTexto(aluno)} {situacao === 'faltou' ? 'faltou' : 'fez uma prova adaptada'} e fica fora das médias da turma.
+                </p>
                 <button className="btn" onClick={() => alternarSituacao(situacao)}>
                   Desfazer
                 </button>
@@ -415,7 +422,7 @@ function TelaLancamento(contexto: ContextoTurma) {
                 <p>
                   <TriangleAlert size={18} aria-hidden />{' '}
                   {conferencia.tipo === 'igual'
-                    ? `As respostas do nº ${aluno.numero} são iguais às do nº ${conferencia.anterior.numero}. Você lançou a mesma prova duas vezes?`
+                    ? `As respostas do ${alunoEmTexto(aluno)} são iguais às do ${alunoEmTexto(conferencia.anterior)}. Você lançou a mesma prova duas vezes?`
                     : `${conferencia.quantas} das ${conferencia.validas} questões estão em branco. O aluno faltou?`}
                 </p>
                 <div className="form-acoes">
@@ -426,7 +433,7 @@ function TelaLancamento(contexto: ContextoTurma) {
                   )}
                   {conferencia.tipo === 'igual' && (
                     <button className="btn" onClick={() => setConferencia(null)}>
-                      Revisar o nº {aluno.numero}
+                      Revisar o {alunoEmTexto(aluno)}
                     </button>
                   )}
                   <button className="btn btn-primario" onClick={estaCerto}>
@@ -462,7 +469,7 @@ function TelaLancamento(contexto: ContextoTurma) {
       {aluno && (
         <div className="lanc-barra-celular">
           <span>
-            <strong>Nº {aluno.numero}</strong> · {situacao === 'presente' ? `${lancadas} de ${validas} questões` : situacao === 'faltou' ? 'faltou' : 'prova adaptada'}
+            <strong>Nº {aluno.numero || '—'}</strong> · {situacao === 'presente' ? `${lancadas} de ${validas} questões` : situacao === 'faltou' ? 'faltou' : 'prova adaptada'}
           </span>
           <button className={`btn ${alunoCompleto ? 'btn-primario' : ''}`} onClick={proximoAluno}>
             Próximo aluno <ArrowRight size={16} aria-hidden />
@@ -498,8 +505,7 @@ function ItemAluno(props: { aluno: Aluno; caderno: Caderno; resposta: RespostaAl
       <button className={`lanc-lista-item ${atual ? 'atual' : ''} ${completo ? 'feito' : ''}`} onClick={props.aoEscolher} aria-current={atual || undefined}>
         <Icone size={15} aria-hidden className="lanc-lista-icone" />
         <span className="lanc-lista-nome">
-          <strong>{aluno.numero}</strong> · {aluno.iniciais}
-          {aluno.pendente && <span className="lanc-lista-pendente"> · aguardando</span>}
+          <strong>{aluno.numero || '—'}</strong> · {aluno.iniciais || '—'}
         </span>
         <span className="lanc-lista-detalhe">{detalhe}</span>
       </button>

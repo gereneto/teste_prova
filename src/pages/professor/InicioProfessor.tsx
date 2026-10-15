@@ -1,6 +1,7 @@
-import { ArrowRight, ChartColumn, ClipboardList, Printer, Users } from 'lucide-react'
+import { ArrowRight, ChartColumn, ClipboardList, Users } from 'lucide-react'
 import { Link } from 'react-router'
-import { Cabecalho, Cartao, Selo, Vazio } from '../../components/ui'
+import { Aviso, Cabecalho, Cartao, Vazio } from '../../components/ui'
+import { descreverFaltando } from '../../lib/alunos'
 import {
   alunosAtivos,
   alunosDaTurma,
@@ -13,7 +14,6 @@ import {
 } from '../../lib/consultas'
 import { marcaEm, progressoDaTurma, respostaCompleta } from '../../lib/estatisticas'
 import { dataCurta, dataLonga, descreverPrazo, diasAte, plural, primeiroNome, serieNome, turmaNome } from '../../lib/formato'
-import { descreverPedido, situacaoDoPedido } from '../../lib/pedidos'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
 import { VAZIO, type Db, type Turma } from '../../types'
@@ -27,9 +27,6 @@ export default function InicioProfessor() {
   const turmas = turmasDoProfessor(db, professor.id)
   const anteriores = turmasAnterioresDoProfessor(db, professor.id)
   const coordenacao = contatoDoColegio(db, professor.colegioId)
-  const pedidos = db.pedidos
-    .filter((p) => p.professorId === professor.id && p.situacao !== 'cancelado')
-    .sort((a, b) => (b.decisao?.em ?? b.criadoEm).localeCompare(a.decisao?.em ?? a.criadoEm))
 
   return (
     <>
@@ -45,25 +42,6 @@ export default function InicioProfessor() {
       {turmas.map((turma) => (
         <CartaoTurma key={turma.id} db={db} turma={turma} />
       ))}
-
-      {pedidos.length > 0 && (
-        <Cartao titulo="Seus pedidos à coordenação" sub="Mudanças na lista de alunos só valem depois que a coordenação aprova.">
-          <ul className="lista-simples">
-            {pedidos.slice(0, 5).map((pedido) => {
-              const situacao = situacaoDoPedido(pedido)
-              return (
-                <li key={pedido.id}>
-                  <span>
-                    {descreverPedido(db, pedido, turmas.length > 1)}
-                    {pedido.situacao === 'recusado' && pedido.decisao?.motivo && <span className="texto-2 bloco pequeno">Motivo: {pedido.decisao.motivo}</span>}
-                  </span>
-                  <Selo tom={situacao.tom}>{situacao.texto}</Selo>
-                </li>
-              )
-            })}
-          </ul>
-        </Cartao>
-      )}
 
       {anteriores.length > 0 && (
         <details className="cartao recolhivel">
@@ -95,10 +73,16 @@ export default function InicioProfessor() {
 function CartaoTurma({ db, turma }: { db: Db; turma: Turma }) {
   const prova = avaliacaoDaTurma(db, turma)
   const alunos = alunosAtivos(db, turma.id)
+  const faltando = descreverFaltando(alunos)
   const base = '/professor'
   return (
     <Cartao titulo={turmaNome(turma)} sub={`${turma.turno} · ${plural(alunos.length, 'aluno', 'alunos')}`}>
       <ProximoPasso db={db} turma={turma} />
+      {faltando && (
+        <Aviso tom="atencao" acoes={<Link className="btn btn-pequeno" to={`${base}/turma/${turma.id}/alunos`}>Completar</Link>}>
+          Faltam dados na lista de alunos: {faltando}.
+        </Aviso>
+      )}
       <div className="atalhos-turma">
         {prova && (
           <>
@@ -113,11 +97,6 @@ function CartaoTurma({ db, turma }: { db: Db; turma: Turma }) {
         <Link to={`${base}/turma/${turma.id}/alunos`}>
           <Users size={18} aria-hidden /> Alunos
         </Link>
-        {prova && (
-          <Link to={`/imprimir/material/${prova.caderno.id}/${turma.id}`}>
-            <Printer size={18} aria-hidden /> Imprimir material
-          </Link>
-        )}
       </div>
     </Cartao>
   )
@@ -149,8 +128,9 @@ function ProximoPasso({ db, turma }: { db: Db; turma: Turma }) {
   let urgente = false
 
   if (etapa === 'agendada') {
-    frase = `A prova será aplicada de ${dataCurta(avaliacao.aplicacaoInicio)} a ${dataCurta(avaliacao.aplicacaoFim)}. Antes disso, confira a lista de alunos e imprima o material.`
-    botao = { rotulo: 'Imprimir material da turma', para: `/imprimir/material/${caderno.id}/${turma.id}` }
+    frase = `A prova será aplicada de ${dataCurta(avaliacao.aplicacaoInicio)} a ${dataCurta(avaliacao.aplicacaoFim)}. Antes disso, confira a lista de alunos da turma.`
+    detalhe = 'A coordenação imprime as provas.'
+    botao = { rotulo: 'Conferir a lista de alunos', para: `${base}/turma/${turma.id}/alunos` }
   } else if (progresso.status === 'concluido') {
     frase = 'Pronto! Veja como foi a turma.'
     detalhe = lancamento?.concluidoEm ? `Lançamento concluído em ${dataLonga(lancamento.concluidoEm)}.` : null

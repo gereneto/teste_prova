@@ -1,20 +1,20 @@
-import { ArrowRight, ChartColumn, ClipboardCopy, ClipboardList, Users } from 'lucide-react'
+import { ArrowRight, ChartColumn, ClipboardCopy, ClipboardList, Printer, Users } from 'lucide-react'
 import { useState, type MouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Cabecalho, Cartao, Progresso, Vazio } from '../../components/ui'
-import { DIAS_PEDIDO_PARADO } from '../../components/CartaoPedido'
+import { descreverFaltando } from '../../lib/alunos'
 import {
   alunosAtivos,
   avaliacaoAtual,
   cadernoDaSerie,
   etapaAvaliacao,
   lancamentoDe,
-  pedidosPendentes,
+  avisosPendentes,
   pessoaDoPerfil,
   turmasDoColegio,
 } from '../../lib/consultas'
 import { progressoDe } from '../../lib/estatisticas'
-import { dataCurta, dataLonga, descreverPrazo, diasAte, diasEntre, hojeIso, listaEmTexto, plural, primeiroNome, turmaNome } from '../../lib/formato'
+import { dataCurta, dataLonga, descreverPrazo, diasAte, listaEmTexto, plural, primeiroNome, turmaNome } from '../../lib/formato'
 import { iniciaisRepetidas } from '../../lib/iniciais'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
@@ -37,18 +37,16 @@ export default function InicioCoordenacao() {
   const base = '/coordenacao'
 
   const itens: ItemAtencao[] = []
-  const pedidos = pedidosPendentes(db, colegio.id)
-  if (pedidos.length) {
-    const maisAntigo = Math.max(...pedidos.map((p) => diasEntre(p.criadoEm, hojeIso())))
+  const avisos = avisosPendentes(db, colegio.id)
+  if (avisos.length) {
     itens.push({
-      chave: 'pedidos',
+      chave: 'avisos',
       texto: (
         <>
-          <strong>{plural(pedidos.length, 'pedido de professor espera', 'pedidos de professores esperam')}</strong> a sua resposta
-          {maisAntigo > DIAS_PEDIDO_PARADO ? `, o mais antigo há ${maisAntigo} dias` : ''}.
+          Os professores fizeram <strong>{plural(avisos.length, 'mudança', 'mudanças')}</strong> nas listas de alunos que você ainda não viu.
         </>
       ),
-      acao: { rotulo: 'Ver pedidos', para: `${base}/pedidos` },
+      acao: { rotulo: 'Ver avisos', para: `${base}/avisos` },
     })
   }
   for (const turma of turmas.filter((t) => !t.professorIds.length)) {
@@ -58,16 +56,16 @@ export default function InicioCoordenacao() {
     const alunos = alunosAtivos(db, turma.id)
     const para = `${base}/turma/${turma.id}/alunos`
     if (!alunos.length) {
-      itens.push({ chave: `vazia-${turma.id}`, texto: <><strong>{turmaNome(turma)}</strong> ainda não tem alunos cadastrados.</>, acao: { rotulo: 'Colar a lista', para } })
+      itens.push({ chave: `vazia-${turma.id}`, texto: <><strong>{turmaNome(turma)}</strong> ainda não tem alunos cadastrados.</>, acao: { rotulo: 'Cadastrar alunos', para } })
       continue
     }
-    const semAno = alunos.filter((a) => a.anoIngresso == null).length
-    if (semAno) {
+    const faltando = descreverFaltando(alunos)
+    if (faltando) {
       itens.push({
-        chave: `ano-${turma.id}`,
+        chave: `faltando-${turma.id}`,
         texto: (
           <>
-            <strong>{plural(semAno, 'aluno', 'alunos')}</strong> do {turmaNome(turma)} sem o ano de entrada no colégio.
+            <strong>{turmaNome(turma)}</strong>: {faltando}.
           </>
         ),
         acao: { rotulo: 'Completar', para },
@@ -142,17 +140,26 @@ export default function InicioCoordenacao() {
 
       {avaliacao && turmas.length > 0 && <Andamento db={db} avaliacao={avaliacao} turmas={turmas} quem={primeiroNome(pessoa?.nome ?? '')} />}
 
-      <Cartao
-        titulo="Resultados do colégio"
-        sub="O que o colégio precisa retomar, ano a ano, e material para a reunião pedagógica."
-        acoes={
-          <Link className="btn btn-primario" to={`${base}/resultados`}>
-            <ChartColumn size={16} aria-hidden /> Ver resultados
-          </Link>
-        }
-      >
-        <p className="texto-2 pequeno">Os resultados começam pelo que é comum a todas as turmas, para o colégio planejar junto.</p>
-      </Cartao>
+      <div className="grade grade-2">
+        <Cartao
+          titulo="Provas"
+          sub="As provas de todos os anos, para baixar e imprimir. Só a coordenação tem acesso."
+          acoes={
+            <Link className="btn" to={`${base}/provas`}>
+              <Printer size={16} aria-hidden /> Ver provas
+            </Link>
+          }
+        />
+        <Cartao
+          titulo="Resultados do colégio"
+          sub="Gráficos do colégio, de cada ano e de cada turma."
+          acoes={
+            <Link className="btn" to={`${base}/resultados`}>
+              <ChartColumn size={16} aria-hidden /> Ver resultados
+            </Link>
+          }
+        />
+      </div>
     </>
   )
 }

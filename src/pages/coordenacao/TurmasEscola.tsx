@@ -2,7 +2,8 @@ import { ChevronRight, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Cabecalho, Cartao, Selo, Vazio } from '../../components/ui'
-import { alunosAtivos, anoLetivoAtual, nomesProfessores, pedidosPendentes, turmasDoColegio } from '../../lib/consultas'
+import { camposFaltando } from '../../lib/alunos'
+import { alunosAtivos, anoLetivoAtual, nomesProfessores, turmasDoColegio } from '../../lib/consultas'
 import { ehNovo } from '../../lib/estatisticas'
 import { compararTexto, plural, serieNome, turmaNome } from '../../lib/formato'
 import { criarTurma, type DadosTurma } from '../../store/acoes'
@@ -19,14 +20,13 @@ export default function TurmasEscola() {
   if (!colegio) return null
 
   const turmas = turmasDoColegio(db, colegio.id)
-  const pedidos = pedidosPendentes(db, colegio.id)
 
   return (
     <>
       <Cabecalho
         sobretitulo={colegio.nome}
         titulo="Turmas e alunos"
-        subtitulo={`${plural(turmas.length, 'turma', 'turmas')} do ano letivo de ${anoLetivoAtual(db)}. Abra uma turma para ver e cadastrar os alunos.`}
+        subtitulo={`${plural(turmas.length, 'turma', 'turmas')} do ano letivo de ${anoLetivoAtual(db)}. Abra uma turma para cadastrar e corrigir os alunos.`}
         acoes={
           !criando && (
             <button className="btn btn-primario" onClick={() => setCriando(true)}>
@@ -56,8 +56,7 @@ export default function TurmasEscola() {
               {doAno.map((turma) => {
                 const alunos = alunosAtivos(db, turma.id)
                 const novos = alunos.filter((a) => ehNovo(a, turma.anoLetivo)).length
-                const semAno = alunos.filter((a) => a.anoIngresso == null).length
-                const pedidosTurma = pedidos.filter((p) => p.turmaId === turma.id).length
+                const incompletos = alunos.filter((a) => camposFaltando(a).length).length
                 return (
                   <li key={turma.id}>
                     <Link to={`/coordenacao/turma/${turma.id}/alunos`} className="lista-link">
@@ -67,10 +66,9 @@ export default function TurmasEscola() {
                       <span className="texto-2">
                         {plural(alunos.length, 'aluno', 'alunos')}
                         {novos ? ` · ${plural(novos, 'novo', 'novos')}` : ''}
-                        {(semAno > 0 || pedidosTurma > 0) && (
+                        {incompletos > 0 && (
                           <span className="bloco">
-                            {pedidosTurma > 0 && <Selo tom="ambar">{plural(pedidosTurma, 'pedido', 'pedidos')}</Selo>}{' '}
-                            {semAno > 0 && <Selo>{semAno} sem ano de entrada</Selo>}
+                            <Selo tom="ambar">{plural(incompletos, 'aluno com dados faltando', 'alunos com dados faltando')}</Selo>
                           </span>
                         )}
                       </span>

@@ -2,8 +2,7 @@ import { ArrowLeft, CircleAlert, CircleCheck, CircleHelp, HeartHandshake, Info, 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { contarFaixas, faixaDe, NOMES_FAIXAS, type ResultadoAluno, type StatusLancamento } from '../lib/estatisticas'
-import { pct } from '../lib/formato'
-import type { Config } from '../types'
+import { pct, plural } from '../lib/formato'
 
 /** Cabeçalho de página no formato SectionHeading do design system: rótulo, título e subtítulo. */
 export function Cabecalho(props: {
@@ -37,7 +36,7 @@ export function Cabecalho(props: {
   )
 }
 
-export function Cartao(props: { titulo?: ReactNode; sub?: ReactNode; acoes?: ReactNode; children: ReactNode; className?: string; id?: string }) {
+export function Cartao(props: { titulo?: ReactNode; sub?: ReactNode; acoes?: ReactNode; children?: ReactNode; className?: string; id?: string }) {
   return (
     <section className={`cartao ${props.className ?? ''}`} id={props.id}>
       {(props.titulo || props.acoes) && (
@@ -84,11 +83,6 @@ export function SeloStatus({ status }: { status: StatusLancamento }) {
   return <Selo tom={TONS_STATUS[status]}>{NOMES_STATUS[status]}</Selo>
 }
 
-export function SeloFaixa({ valor, config }: { valor: number; config: Config }) {
-  const faixa = faixaDe(valor, config)
-  return <span className={`selo selo-faixa-${faixa}`}>{NOMES_FAIXAS[faixa]}</span>
-}
-
 export function Progresso({ valor, total, rotulo }: { valor: number; total: number; rotulo?: string }) {
   const largura = total ? Math.round((100 * valor) / total) : 0
   return (
@@ -105,20 +99,15 @@ export interface ItemBarra {
   detalhe?: ReactNode
 }
 
-/** Barras horizontais de 0 a 100%. Com `config`, cada barra ganha a cor da faixa de desempenho. */
-export function Barras({ itens, config }: { itens: ItemBarra[]; config?: Config }) {
+/** Barras horizontais de 0 a 100%, com a cor da faixa de acerto. */
+export function Barras({ itens }: { itens: ItemBarra[] }) {
   return (
     <div className="barras">
       {itens.map((item) => (
         <div className="barra-item" key={item.chave}>
           <div className="barra-rotulo">{item.rotulo}</div>
           <div className="barra-trilho">
-            {item.valor != null && (
-              <div
-                className={`barra-preench ${config ? `faixa-${faixaDe(item.valor, config)}` : ''}`}
-                style={{ width: `${Math.max(1, Math.min(100, item.valor))}%` }}
-              />
-            )}
+            {item.valor != null && <div className={`barra-preench faixa-${faixaDe(item.valor)}`} style={{ width: `${Math.max(1, Math.min(100, item.valor))}%` }} />}
           </div>
           <div className="barra-valor">
             {pct(item.valor)}
@@ -131,59 +120,109 @@ export function Barras({ itens, config }: { itens: ItemBarra[]; config?: Config 
 }
 
 /** Barra curta para células de tabela. */
-export function MiniBarra({ valor, config }: { valor: number; config?: Config }) {
+export function MiniBarra({ valor }: { valor: number }) {
   return (
     <span className="mini-barra">
       <span className="mini-barra-trilho">
-        <span
-          className={`mini-barra-preench ${config ? `faixa-${faixaDe(valor, config)}` : ''}`}
-          style={{ width: `${Math.max(2, Math.min(100, valor))}%` }}
-        />
+        <span className={`mini-barra-preench faixa-${faixaDe(valor)}`} style={{ width: `${Math.max(2, Math.min(100, valor))}%` }} />
       </span>
       <span className="mini-barra-valor">{pct(valor)}</span>
     </span>
   )
 }
 
-/** Faixa de acertos em número de questões: com 16 questões e Adequado a partir de 60%, "de 10 a 12 acertos". */
-function limitesEmAcertos(config: Config, questoes: number): string[] {
-  const minimo = (p: number) => Math.ceil((p * questoes) / 100 - 1e-9)
-  const [b, a, v] = config.faixas.map(minimo)
-  const intervalo = (de: number, ate: number) => (de > ate ? 'nenhum valor' : de === ate ? `${de} acertos` : `de ${de} a ${ate} acertos`)
-  return [intervalo(0, b - 1), intervalo(b, a - 1), intervalo(a, v - 1), intervalo(v, questoes)]
+/** Quantos alunos ficaram em cada faixa de acerto (de 20 em 20 pontos), em colunas. */
+export function Histograma({ resultados }: { resultados: ResultadoAluno[] }) {
+  const contagem = contarFaixas(resultados)
+  const maior = Math.max(1, ...contagem)
+  const total = contagem.reduce((s, v) => s + v, 0)
+  return (
+    <figure className="histograma" aria-label={`Alunos por faixa de acerto: ${contagem.map((n, i) => `${NOMES_FAIXAS[i]}, ${n}`).join('; ')}`}>
+      <div className="histograma-colunas" aria-hidden>
+        {contagem.map((n, faixa) => (
+          <div key={faixa} className="histograma-coluna">
+            <span className="histograma-valor">{n}</span>
+            <span className={`histograma-barra faixa-${faixa}`} style={{ height: `${(100 * n) / maior}%` }} />
+          </div>
+        ))}
+      </div>
+      <div className="histograma-rotulos" aria-hidden>
+        {NOMES_FAIXAS.map((nome) => (
+          <span key={nome}>{nome}</span>
+        ))}
+      </div>
+      <figcaption className="texto-2 pequeno">
+        {plural(total, 'aluno avaliado', 'alunos avaliados')}, pelo percentual de acertos na prova.
+      </figcaption>
+    </figure>
+  )
 }
 
-/**
- * Quantos alunos ficaram em cada faixa. Com `questoes` (uma prova só), a legenda mostra a faixa em
- * número de acertos, que é como o professor pensa; sem, mostra em percentual.
- */
-export function BarraFaixas({ resultados, config, questoes }: { resultados: ResultadoAluno[]; config: Config; questoes?: number }) {
-  const contagem = contarFaixas(resultados, config)
-  const total = contagem.reduce((s, v) => s + v, 0)
-  const [basico, adequado, avancado] = config.faixas
-  const limites = questoes
-    ? limitesEmAcertos(config, questoes).map((t) => `${t} em ${questoes}`)
-    : [`menos de ${basico}%`, `${basico}% a ${adequado - 1}%`, `${adequado}% a ${avancado - 1}%`, `${avancado}% ou mais`]
+/** Acerto em cada questão, em colunas de 0 a 100%, com uma linha na metade. */
+export function ColunasPorQuestao({ itens }: { itens: { numero: number; valor: number | null; disciplina?: string }[] }) {
   return (
-    <div className="faixas">
-      <div className="faixas-barra" aria-hidden>
-        {contagem.map((qtd, faixa) => (qtd ? <div key={faixa} className={`faixas-seg faixa-${faixa}`} style={{ flexGrow: qtd }} /> : null))}
-        {!total && <div className="faixas-seg faixas-vazia" style={{ flexGrow: 1 }} />}
+    <>
+      <div className="colunas-questoes-rolagem">
+        <figure className="colunas-questoes" style={{ minWidth: `${itens.length * 34}px` }}>
+          <div className="colunas-questoes-area">
+            <span className="colunas-questoes-metade" aria-hidden />
+            {itens.map((item) => (
+              <div key={item.numero} className="colunas-questoes-coluna" role="img" aria-label={`Questão ${item.numero}: ${pct(item.valor)} de acerto`}>
+                <span className="colunas-questoes-valor">{item.valor == null ? '—' : Math.round(item.valor)}</span>
+                {item.valor != null && <span className={`colunas-questoes-barra faixa-${faixaDe(item.valor)}`} style={{ height: `${Math.max(1, item.valor)}%` }} />}
+              </div>
+            ))}
+          </div>
+          <div className="colunas-questoes-numeros" aria-hidden>
+            {itens.map((item) => (
+              <span key={item.numero} className={item.disciplina === 'Matemática' ? 'matematica' : ''}>
+                {item.numero}
+              </span>
+            ))}
+          </div>
+        </figure>
       </div>
-      <ul className="faixas-legenda">
-        {contagem.map((qtd, faixa) => (
-          <li key={faixa}>
-            <span className={`faixas-ponto faixa-${faixa}`} aria-hidden />
-            <span>
-              <strong>{NOMES_FAIXAS[faixa]}</strong> <span className="texto-2">({limites[faixa]})</span>
-            </span>
-            <span className="faixas-qtd">
-              {qtd} {qtd === 1 ? 'aluno' : 'alunos'}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+      {itens.some((i) => i.disciplina) && <p className="colunas-questoes-disciplinas texto-2 pequeno">{questoesPorDisciplina(itens)}</p>}
+    </>
+  )
+}
+
+/** "Questões 1 a 10: Português · 11 a 20: Matemática." */
+function questoesPorDisciplina(itens: { numero: number; disciplina?: string }[]): string {
+  const blocos: { disciplina: string; de: number; ate: number }[] = []
+  for (const item of itens) {
+    const ultimo = blocos[blocos.length - 1]
+    if (ultimo && ultimo.disciplina === (item.disciplina ?? '')) ultimo.ate = item.numero
+    else blocos.push({ disciplina: item.disciplina ?? '', de: item.numero, ate: item.numero })
+  }
+  const partes = blocos.map((b) => `${b.de === b.ate ? b.de : `${b.de} a ${b.ate}`}: ${b.disciplina || 'sem disciplina'}`)
+  return `Questões ${partes.join(' · ')}. As de Matemática têm o número em destaque.`
+}
+
+/** Barra fina com a parte dos alunos em cada faixa de acerto, para tabelas. */
+export function MiniFaixas({ contagem }: { contagem: number[] }) {
+  const total = contagem.reduce((s, v) => s + v, 0)
+  if (!total) return <span className="texto-2">—</span>
+  return (
+    <span className="mini-faixas-com-texto">
+      <span className="mini-faixas" aria-hidden>
+        {contagem.map((n, i) => (n ? <span key={i} className={`faixa-${i}`} style={{ flexGrow: n }} /> : null))}
+      </span>
+      <span className="sr-only">{contagem.map((n, i) => `${NOMES_FAIXAS[i]}: ${n}`).join(', ')}</span>
+    </span>
+  )
+}
+
+/** Legenda das cores das faixas de acerto. */
+export function LegendaFaixas() {
+  return (
+    <ul className="legenda-faixas" aria-label="Cores das faixas de acerto">
+      {NOMES_FAIXAS.map((nome, faixa) => (
+        <li key={nome}>
+          <span className={`faixas-ponto faixa-${faixa}`} aria-hidden /> {nome}
+        </li>
+      ))}
+    </ul>
   )
 }
 

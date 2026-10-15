@@ -9,6 +9,9 @@ export const TURNOS: Turno[] = ['Manhã', 'Tarde', 'Integral']
 export const LETRAS = ['A', 'B', 'C', 'D', 'E'] as const
 export type Letra = (typeof LETRAS)[number]
 
+/** A prova da Solar tem só estas duas disciplinas. */
+export const DISCIPLINAS_DA_PROVA = ['Português', 'Matemática']
+
 // Cada questão lançada vira um caractere na string `marcas` da resposta do aluno:
 // uma letra, em branco, rasurada (mais de uma marcada) ou ainda não lançada.
 export const BRANCO = '-'
@@ -21,21 +24,31 @@ export interface Contato {
   telefone: string
 }
 
+/**
+ * Quem entra no site. O link de acesso enviado por e-mail leva o token e não expira;
+ * mudar o e-mail da pessoa gera um token novo, e o link antigo deixa de valer.
+ */
+interface ComAcesso {
+  token: string
+}
+
 export interface Colegio {
   id: Id
   nome: string
   cidade: string
   uf: string
+  /** Pessoa da equipe Solar que cuida do colégio e define quem é o responsável pela coordenação. */
+  membroSolarId: Id | null
 }
 
 /** Pessoa da coordenação de um colégio. Só uma é a responsável, e é ela quem cadastra as demais. */
-export interface Coordenador extends Contato {
+export interface Coordenador extends Contato, ComAcesso {
   id: Id
   colegioId: Id
   responsavel: boolean
 }
 
-export interface Professor {
+export interface Professor extends ComAcesso {
   id: Id
   colegioId: Id
   nome: string
@@ -47,7 +60,7 @@ export interface Professor {
 /** Na equipe Solar, uma pessoa é a responsável e define quem pode editar e quem só visualiza. */
 export type PapelSolar = 'responsavel' | 'edicao' | 'visualizacao'
 
-export interface MembroSolar extends Contato {
+export interface MembroSolar extends Contato, ComAcesso {
   id: Id
   papel: PapelSolar
 }
@@ -62,20 +75,22 @@ export interface Turma {
   professorIds: Id[]
 }
 
+export type Sexo = 'M' | 'F'
+
 export type MotivoSaida = 'transferencia' | 'mudou_de_cidade' | 'concluiu' | 'outro'
 
+/** Os campos podem ficar em branco: o site lembra depois que falta preencher. */
 export interface Aluno {
   id: Id
   turmaId: Id
-  /** Só as iniciais, como "A.C.S.": o site não guarda o nome completo. */
+  /** Número (ou código) de chamada, como o colégio usa. É ele que liga a prova em papel ao aluno no site. */
+  numero: string
+  /** Só as iniciais, em maiúsculas, como "A.C.S.": o site não guarda o nome completo. */
   iniciais: string
-  /** Número de chamada, o mesmo do diário da escola. É ele que liga a prova em papel ao aluno no site. */
-  numero: number
+  sexo: Sexo | null
   /** Ano em que entrou no colégio (null = não informado). Separa alunos novos e antigos nos resultados. */
   anoIngresso: number | null
   ativo: boolean
-  /** Incluído a pedido de um professor e ainda não confirmado pela coordenação. */
-  pendente?: boolean
   saida?: { em: string; motivo: MotivoSaida }
 }
 
@@ -115,6 +130,7 @@ export interface Caderno {
   avaliacaoId: Id
   serie: Serie
   numAlternativas: 4 | 5
+  /** Só o 5º ano marca numa folha de respostas separada; os demais marcam na própria prova. */
   usaFolhaRespostas: boolean
   questoes: Questao[]
   pdf: PdfCaderno | null
@@ -129,7 +145,7 @@ export interface RespostaAluno {
   marcas: string
   atualizadoEm: string
   /** Número de chamada do aluno nesta turma quando a prova foi lançada (ele pode mudar de turma depois). */
-  numero?: number
+  numero?: string
 }
 
 /** As respostas de uma turma para uma prova. */
@@ -141,27 +157,7 @@ export interface Lancamento {
   concluidoEm: string | null
 }
 
-export type TipoPedido = 'incluir' | 'saida' | 'correcao'
-export type SituacaoPedido = 'pendente' | 'aprovado' | 'recusado' | 'cancelado'
-
-/** Mudança na lista de alunos pedida por um professor. Só vale depois que a coordenação aprova. */
-export interface Pedido {
-  id: Id
-  tipo: TipoPedido
-  colegioId: Id
-  turmaId: Id
-  alunoId: Id
-  professorId: Id
-  criadoEm: string
-  /** Inclusão e correção: os dados propostos. */
-  iniciais?: string
-  numero?: number
-  anoIngresso?: number | null
-  /** Saída: o motivo. */
-  motivoSaida?: MotivoSaida
-  situacao: SituacaoPedido
-  decisao?: { por: string; em: string; motivo?: string }
-}
+export type TipoMudancaAluno = 'inclusao' | 'correcao' | 'saida' | 'volta' | 'exclusao' | 'mudanca_turma'
 
 /** Uma linha do histórico de alterações, escrita em frase. */
 export interface Evento {
@@ -174,11 +170,27 @@ export interface Evento {
   texto: string
   /** Mudança na correção de uma prova: aparece como aviso nos resultados das turmas daquele ano. */
   avisarTurmas?: boolean
+  /** Mudança feita por um professor na lista de alunos: a coordenação é avisada e marca que está ciente. */
+  avisarCoordenacao?: boolean
+  ciente?: { por: string; em: string }
+  /** Para juntar num aviso só as várias mudanças que um professor faz no mesmo aluno no mesmo dia. */
+  alunoId?: Id
+  tipo?: TipoMudancaAluno
+  campos?: Record<string, { de: string; para: string }>
+}
+
+/** E-mail com o link de acesso. Nesta versão de teste o envio é simulado: o e-mail fica guardado aqui. */
+export interface Email {
+  id: Id
+  enviadoEm: string
+  para: string
+  nome: string
+  assunto: string
+  texto: string
+  token: string
 }
 
 export interface Config {
-  /** Percentual mínimo de acertos para Básico, Adequado e Avançado. */
-  faixas: [number, number, number]
   /** Ano letivo em curso: as turmas deste ano são as que aparecem para cadastro e lançamento. */
   anoLetivo: number
 }
@@ -194,8 +206,8 @@ export interface Db {
   avaliacoes: Avaliacao[]
   cadernos: Caderno[]
   lancamentos: Lancamento[]
-  pedidos: Pedido[]
   historico: Evento[]
+  emails: Email[]
   config: Config
 }
 

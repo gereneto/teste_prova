@@ -1,41 +1,99 @@
-import { LogOut, Pencil, UserPlus } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
-import { Aviso, Cartao, Selo, Vazio } from '../../components/ui'
-import { alunosAtivos, anoLetivoAtual, contatoDoColegio } from '../../lib/consultas'
+import { ArrowRightLeft, LogOut, Pencil, Plus, Trash2, TriangleAlert, Undo2 } from 'lucide-react'
+import { useRef, useState, type FocusEvent, type FormEvent, type KeyboardEvent } from 'react'
+import { Link, useNavigate } from 'react-router'
+import { Aviso, Cartao, Confirmacao, Vazio } from '../../components/ui'
+import { camposFaltando, descreverFaltando, NOMES_MOTIVO, type CampoAluno } from '../../lib/alunos'
+import { alunosNaOrdemDoCadastro, anoLetivoAtual, turmasDoColegio } from '../../lib/consultas'
 import { ehNovo } from '../../lib/estatisticas'
-import { alunoEmTexto, normalizarIniciais } from '../../lib/iniciais'
-import { anosDeEntrada, descreverEntrada } from '../../lib/ingresso'
-import { descreverPedido, NOMES_MOTIVO, situacaoDoPedido } from '../../lib/pedidos'
-import { cancelarPedido, numerosUsados, pedirCorrecao, pedirInclusao, pedirSaida, proximoNumero, validarIniciais, type DadosAluno } from '../../store/acoes'
-import type { Aluno, Db, Id, MotivoSaida, Turma } from '../../types'
-import { AlunosCoordenacao } from '../coordenacao/TurmaDetalhe'
+import { dataCurta, dataLonga, plural, turmaNome } from '../../lib/formato'
+import { alunoEmTexto, formatarIniciais, identificacao } from '../../lib/iniciais'
+import { anosDeEntrada } from '../../lib/ingresso'
+import {
+  atualizarAluno,
+  criarAluno,
+  editarTurma,
+  excluirCadastroDoAluno,
+  mudarDeTurma,
+  novoId,
+  reativarAluno,
+  registrarSaida,
+  removerTurma,
+  temRespostas,
+  type DadosAluno,
+} from '../../store/acoes'
+import type { Aluno, Db, Id, MotivoSaida, Sexo, Turma } from '../../types'
+import { FormularioTurma } from '../coordenacao/TurmasEscola'
 import { CabecalhoTurma } from './CabecalhoTurma'
 import { useTurmaDaRota, type ContextoSoTurma } from './contexto'
 
-/** A aba Alunos da turma: a coordenação mexe na lista; o professor pede as mudanças. */
+/** A aba Alunos da turma. Coordenação e professores editam a lista do mesmo jeito; a coordenação é avisada do que o professor muda. */
 export default function AlunosDaTurma() {
   const contexto = useTurmaDaRota()
   if ('erro' in contexto) return <Vazio titulo={contexto.erro} acao={<Link className="btn" to={contexto.base}>Voltar ao início</Link>} />
-  if (contexto.perfil.papel === 'coordenacao') return <AlunosCoordenacao {...contexto} />
-  return <AlunosProfessor {...contexto} />
+  return <TelaAlunos {...contexto} />
 }
 
-const MOTIVOS_DO_PROFESSOR: MotivoSaida[] = ['transferencia', 'mudou_de_cidade', 'outro']
+// As linhas alternam as cores do símbolo da Solar, como na tela de lançamento.
+const CORES_DAS_LINHAS = ['cor-vermelha', 'cor-laranja', 'cor-amarela'] as const
 
-function AlunosProfessor({ db, perfil, turma, colegio, base }: ContextoSoTurma) {
-  const [incluindo, setIncluindo] = useState(false)
-  const [corrigindo, setCorrigindo] = useState<Id | null>(null)
-  const [saindo, setSaindo] = useState<Id | null>(null)
+function TelaAlunos({ db, perfil, turma, colegio, base }: ContextoSoTurma) {
+  const navigate = useNavigate()
+  const coordenacao = perfil.papel === 'coordenacao'
+  const [editandoTurma, setEditandoTurma] = useState(false)
+  const [excluindoTurma, setExcluindoTurma] = useState(false)
   const [aviso, setAviso] = useState<string | null>(null)
-  const alunos = alunosAtivos(db, turma.id)
-  const professorId = perfil.papel === 'professor' ? perfil.professorId : ''
-  const pedidos = db.pedidos.filter((p) => p.turmaId === turma.id && p.professorId === professorId).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
-  const pendentePorAluno = new Map(db.pedidos.filter((p) => p.turmaId === turma.id && p.situacao === 'pendente').map((p) => [p.alunoId, p]))
-  const coordenacao = contatoDoColegio(db, turma.colegioId)
-  const anterior = turma.anoLetivo < anoLetivoAtual(db)
+  // A linha em branco no fim já tem o id do próximo aluno: ao ser preenchida, vira o aluno sem perder o foco.
+  const [idNovo, setIdNovo] = useState(() => novoId('alu'))
+  const editor = useRef<HTMLDivElement>(null)
 
-  const cabecalho = <CabecalhoTurma db={db} perfil={perfil} turma={turma} colegio={colegio} base={base} aba="alunos" />
+  const anterior = turma.anoLetivo < anoLetivoAtual(db)
+  const alunos = alunosNaOrdemDoCadastro(db, turma.id)
+  const inativos = db.alunos.filter((a) => a.turmaId === turma.id && !a.ativo)
+  const faltando = descreverFaltando(alunos)
+  const contagem = new Map<string, number>()
+  for (const a of alunos) if (a.numero) contagem.set(a.numero.toLowerCase(), (contagem.get(a.numero.toLowerCase()) ?? 0) + 1)
+  const repetidos = [...contagem].filter(([, n]) => n > 1).map(([numero]) => numero)
+  const historico = db.historico.filter((e) => e.turmaId === turma.id).slice(-12).reverse()
+  const outrasTurmas = turmasDoColegio(db, turma.colegioId).filter((t) => t.id !== turma.id)
+  const podeExcluirTurma = coordenacao && !db.lancamentos.some((l) => l.turmaId === turma.id && Object.keys(l.respostas).length > 0)
+
+  function criar(id: Id, dados: Partial<DadosAluno>) {
+    criarAluno(turma.id, id, dados)
+    setIdNovo(novoId('alu'))
+  }
+
+  function focarLinhaNova() {
+    editor.current?.querySelector<HTMLInputElement>('.linha-aluno.nova input')?.focus()
+  }
+
+  // Enter passa para a próxima casa, como o Tab.
+  function aoTeclar(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement)) return
+    e.preventDefault()
+    const campos = [...(editor.current?.querySelectorAll<HTMLElement>('[data-campo]') ?? [])]
+    campos[campos.indexOf(e.target) + 1]?.focus()
+  }
+
+  const cabecalho = (
+    <CabecalhoTurma
+      db={db}
+      perfil={perfil}
+      turma={turma}
+      colegio={colegio}
+      base={base}
+      aba="alunos"
+      acoes={
+        coordenacao &&
+        !anterior &&
+        !editandoTurma && (
+          <button className="btn" onClick={() => setEditandoTurma(true)}>
+            <Pencil size={16} aria-hidden /> Editar turma
+          </button>
+        )
+      }
+    />
+  )
+
   if (anterior) {
     return (
       <>
@@ -49,262 +107,344 @@ function AlunosProfessor({ db, perfil, turma, colegio, base }: ContextoSoTurma) 
     <>
       {cabecalho}
 
+      {editandoTurma && (
+        <>
+          <FormularioTurma
+            db={db}
+            colegioId={turma.colegioId}
+            ignorarTurmaId={turma.id}
+            inicial={{ serie: turma.serie, nome: turma.nome, turno: turma.turno, professorIds: turma.professorIds }}
+            rotuloSalvar="Salvar alterações"
+            aoSalvar={(dados) => {
+              editarTurma(turma.id, dados)
+              setEditandoTurma(false)
+            }}
+            aoCancelar={() => setEditandoTurma(false)}
+          />
+          <p className="texto-2 pequeno">
+            {podeExcluirTurma ? (
+              <button className="btn btn-perigo btn-pequeno" onClick={() => setExcluindoTurma(true)}>
+                <Trash2 size={15} aria-hidden /> Excluir turma
+              </button>
+            ) : (
+              'Esta turma já tem respostas lançadas, então não pode ser excluída.'
+            )}
+          </p>
+        </>
+      )}
+
       {aviso && (
         <Aviso tom="sucesso" acoes={<button className="btn btn-pequeno btn-fantasma" onClick={() => setAviso(null)}>Fechar</button>}>
           {aviso}
         </Aviso>
       )}
 
-      <div className="confira-diario">
-        <p>
-          <strong>Confira esta lista com o seu diário.</strong> Falta alguém, sobra alguém ou algum dado está errado? Peça à coordenação: a
-          mudança vale depois que ela aprovar.
-        </p>
-        {!incluindo && (
-          <button className="btn btn-primario" onClick={() => setIncluindo(true)}>
-            <UserPlus size={17} aria-hidden /> Falta um aluno na lista
-          </button>
-        )}
-      </div>
-
-      {incluindo && (
-        <FormularioAluno
-          db={db}
-          turma={turma}
-          titulo="Pedir a inclusão de um aluno"
-          explicacao="O aluno entra na lista na hora, como “aguardando a coordenação”, e você já pode lançar a prova dele. Ele só entra nas médias depois que a coordenação aprovar."
-          inicial={{ iniciais: '', numero: proximoNumero(db, turma.id), anoIngresso: turma.anoLetivo }}
-          rotuloSalvar="Enviar pedido"
-          aoSalvar={(dados) => {
-            pedirInclusao(turma.id, dados)
-            setIncluindo(false)
-            setAviso(`Pedido enviado. O ${alunoEmTexto(dados)} já está na lista, aguardando a coordenação.`)
-          }}
-          aoCancelar={() => setIncluindo(false)}
-        />
+      {faltando && (
+        <Aviso tom="atencao">
+          <strong>Faltam dados.</strong> {faltando}. As casas em amarelo mostram o que completar.
+        </Aviso>
+      )}
+      {repetidos.length > 0 && (
+        <Aviso tom="atencao">
+          {repetidos.length === 1 ? `O nº ${repetidos[0]} aparece` : `Os números ${repetidos.join(', ')} aparecem`} mais de uma vez na lista. Confira
+          no diário.
+        </Aviso>
       )}
 
-      <Cartao titulo={`Alunos do ${turma.serie}º ano ${turma.nome}`} sub="Os alunos aparecem só pelas iniciais e pelo número de chamada, o mesmo do diário.">
-        {!alunos.length ? (
-          <Vazio titulo="A turma ainda não tem alunos no site">
-            Quem cadastra a lista é a coordenação{coordenacao ? ` (${coordenacao.nome})` : ''}. Se já tiver a lista, use “Falta um aluno na lista”.
-          </Vazio>
-        ) : (
-          <div className="tabela-rolagem">
-            <table className="tabela">
-              <thead>
-                <tr>
-                  <th className="num">Nº</th>
-                  <th>Aluno</th>
-                  <th>Entrou no colégio</th>
-                  <th className="acoes">
-                    <span className="sr-only">Pedidos</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {alunos.map((aluno) => {
-                  const pendente = pendentePorAluno.get(aluno.id)
-                  if (corrigindo === aluno.id) {
-                    return (
-                      <tr key={aluno.id}>
-                        <td colSpan={4}>
-                          <FormularioAluno
-                            db={db}
-                            turma={turma}
-                            aluno={aluno}
-                            titulo={`Pedir correção do ${alunoEmTexto(aluno)}`}
-                            inicial={aluno}
-                            rotuloSalvar="Enviar pedido"
-                            aoSalvar={(dados) => {
-                              pedirCorrecao(aluno.id, dados)
-                              setCorrigindo(null)
-                              setAviso('Pedido de correção enviado à coordenação.')
-                            }}
-                            aoCancelar={() => setCorrigindo(null)}
-                          />
-                        </td>
-                      </tr>
-                    )
-                  }
-                  return (
-                    <tr key={aluno.id}>
-                      <td className="num">
-                        <strong>{aluno.numero}</strong>
-                      </td>
-                      <td>
-                        {aluno.iniciais}
-                        {ehNovo(aluno, turma.anoLetivo) && <span className="tag-novo">Novo</span>}
-                      </td>
-                      <td>{aluno.anoIngresso ?? <span className="texto-2">não informado</span>}</td>
-                      <td className="acoes">
-                        {pendente ? (
-                          <Selo tom="ambar">{pendente.tipo === 'incluir' ? 'Aguardando a coordenação' : 'Pedido aguardando'}</Selo>
-                        ) : saindo === aluno.id ? (
-                          <SaidaInline
-                            aoConfirmar={(motivo) => {
-                              pedirSaida(aluno.id, motivo)
-                              setSaindo(null)
-                              setAviso(`Aviso de saída do ${alunoEmTexto(aluno)} enviado à coordenação.`)
-                            }}
-                            aoCancelar={() => setSaindo(null)}
-                          />
-                        ) : (
-                          <>
-                            <button className="btn btn-pequeno btn-fantasma" onClick={() => setCorrigindo(aluno.id)}>
-                              <Pencil size={14} aria-hidden /> Pedir correção
-                            </button>
-                            <button className="btn btn-pequeno btn-fantasma" onClick={() => setSaindo(aluno.id)}>
-                              <LogOut size={14} aria-hidden /> Saiu da turma
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      <Cartao
+        titulo="Alunos da turma"
+        sub={`Cada linha é um aluno: número de chamada, iniciais, sexo e ano em que entrou no colégio. Tudo é salvo na hora, e dá para deixar uma casa em branco e completar depois.${
+          perfil.papel === 'professor' ? ' A coordenação recebe um aviso de cada mudança.' : ''
+        }`}
+      >
+        <div className="editor-alunos" ref={editor} onKeyDown={aoTeclar}>
+          <div className="linha-aluno linha-aluno-cabecalho" aria-hidden>
+            <span>Nº na chamada</span>
+            <span>Iniciais</span>
+            <span>Sexo</span>
+            <span>Entrou no colégio</span>
+            <span />
           </div>
+          {/* Uma lista só, com a linha em branco no fim: assim, quando ela vira aluno (mesma key), o React
+              mantém a linha e o foco continua na casa em que a pessoa está digitando. */}
+          {[
+            ...alunos.map((aluno, i) => (
+              <LinhaAluno
+                key={aluno.id}
+                db={db}
+                turma={turma}
+                aluno={aluno}
+                cor={CORES_DAS_LINHAS[i % CORES_DAS_LINHAS.length]}
+                repetido={repetidos.includes(aluno.numero.toLowerCase())}
+                outrasTurmas={coordenacao ? outrasTurmas : []}
+                aoAvisar={setAviso}
+              />
+            )),
+            <LinhaAluno
+              key={idNovo}
+              db={db}
+              turma={turma}
+              aluno={null}
+              cor={CORES_DAS_LINHAS[alunos.length % CORES_DAS_LINHAS.length]}
+              repetido={false}
+              outrasTurmas={[]}
+              aoCriar={(dados) => criar(idNovo, dados)}
+              aoAvisar={setAviso}
+            />,
+          ]}
+        </div>
+        <div className="editor-alunos-rodape">
+          <button className="btn" onClick={focarLinhaNova}>
+            <Plus size={16} aria-hidden /> Adicionar aluno
+          </button>
+          <p className="texto-2 pequeno">
+            Para incluir um aluno, preencha a última linha. <kbd>Enter</kbd> ou <kbd>Tab</kbd> passa para a próxima casa.
+          </p>
+        </div>
+
+        {inativos.length > 0 && (
+          <details className="inativos">
+            <summary>{plural(inativos.length, 'aluno saiu', 'alunos saíram')} da turma</summary>
+            <ul>
+              {inativos.map((aluno) => (
+                <li key={aluno.id}>
+                  <span>
+                    {identificacao(aluno)}
+                    {aluno.saida && (
+                      <span className="texto-2 pequeno">
+                        {' '}
+                        · {NOMES_MOTIVO[aluno.saida.motivo].toLowerCase()}, em {dataLonga(aluno.saida.em)}
+                      </span>
+                    )}
+                  </span>
+                  <button
+                    className="btn btn-pequeno btn-fantasma"
+                    onClick={() => {
+                      reativarAluno(aluno.id)
+                      setAviso(`O ${alunoEmTexto(aluno)} voltou para a lista.`)
+                    }}
+                  >
+                    <Undo2 size={14} aria-hidden /> Pôr de volta na lista
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </Cartao>
 
-      {pedidos.length > 0 && (
-        <Cartao titulo="Seus pedidos para esta turma">
-          <ul className="lista-simples">
-            {pedidos.map((pedido) => {
-              const situacao = situacaoDoPedido(pedido)
-              return (
-                <li key={pedido.id}>
-                  <span>
-                    {descreverPedido(db, pedido)}
-                    {pedido.situacao === 'recusado' && pedido.decisao?.motivo && <span className="texto-2 bloco pequeno">Motivo: {pedido.decisao.motivo}</span>}
-                  </span>
-                  <span className="lista-simples-acoes">
-                    <Selo tom={situacao.tom}>{situacao.texto}</Selo>
-                    {pedido.situacao === 'pendente' && (
-                      <button className="btn btn-pequeno btn-fantasma" onClick={() => cancelarPedido(pedido.id)}>
-                        Cancelar pedido
-                      </button>
-                    )}
-                  </span>
-                </li>
-              )
-            })}
+      {historico.length > 0 && (
+        <details className="cartao recolhivel">
+          <summary>Histórico da turma</summary>
+          <ul className="historico">
+            {historico.map((e) => (
+              <li key={e.id}>
+                <span className="historico-data">{dataCurta(e.em)}</span>
+                <span>
+                  {e.texto} <span className="texto-2">({e.por})</span>
+                </span>
+              </li>
+            ))}
           </ul>
-        </Cartao>
+        </details>
       )}
+
+      <Confirmacao
+        titulo={`Excluir o ${turmaNome(turma)}?`}
+        aberta={excluindoTurma}
+        rotuloConfirmar="Excluir a turma e a lista de alunos"
+        perigo
+        aoConfirmar={() => {
+          removerTurma(turma.id)
+          navigate('/coordenacao/turmas')
+        }}
+        aoFechar={() => setExcluindoTurma(false)}
+      >
+        <p>A turma e a lista de alunos dela saem do site. Como ainda não há respostas lançadas, nenhum resultado se perde.</p>
+      </Confirmacao>
     </>
   )
 }
 
-function SaidaInline(props: { aoConfirmar: (motivo: MotivoSaida) => void; aoCancelar: () => void }) {
-  const [motivo, setMotivo] = useState<MotivoSaida>('transferencia')
-  return (
-    <span className="inline-acoes">
-      <select className="select-compacto" value={motivo} onChange={(e) => setMotivo(e.target.value as MotivoSaida)} aria-label="Motivo da saída">
-        {MOTIVOS_DO_PROFESSOR.map((m) => (
-          <option key={m} value={m}>
-            {NOMES_MOTIVO[m]}
-          </option>
-        ))}
-      </select>
-      <button className="btn btn-pequeno btn-primario" onClick={() => props.aoConfirmar(motivo)}>
-        Avisar a coordenação
-      </button>
-      <button className="btn btn-pequeno btn-fantasma" onClick={props.aoCancelar}>
-        Cancelar
-      </button>
-    </span>
-  )
-}
+const MOTIVOS: MotivoSaida[] = ['transferencia', 'mudou_de_cidade', 'outro']
 
-/** Número, iniciais e ano de entrada de um aluno, com as conferências. Serve para professor e coordenação. */
-export function FormularioAluno(props: {
+/** Uma linha do editor: número, iniciais, sexo e ano de entrada. Sem aluno, é a linha em branco que inclui um novo. */
+function LinhaAluno(props: {
   db: Db
   turma: Turma
-  aluno?: Aluno
-  titulo?: string
-  explicacao?: string
-  inicial: DadosAluno
-  rotuloSalvar: string
-  aoSalvar: (dados: DadosAluno) => void
-  aoCancelar: () => void
+  aluno: Aluno | null
+  cor: string
+  repetido: boolean
+  outrasTurmas: Turma[]
+  aoCriar?: (dados: Partial<DadosAluno>) => void
+  aoAvisar: (texto: string) => void
 }) {
-  const { db, turma } = props
-  const [numero, setNumero] = useState(String(props.inicial.numero))
-  const [iniciais, setIniciais] = useState(props.inicial.iniciais)
-  const [ano, setAno] = useState(props.inicial.anoIngresso == null ? '' : String(props.inicial.anoIngresso))
-  const [erro, setErro] = useState<string | null>(null)
-  const anoNumero = ano ? Number(ano) : null
-  const entrada = descreverEntrada(anoNumero, turma)
+  const { db, turma, aluno, cor, repetido, outrasTurmas } = props
+  const [acao, setAcao] = useState<'saida' | 'mudar' | null>(null)
+  const [motivo, setMotivo] = useState<MotivoSaida | 'engano'>('transferencia')
+  const [destino, setDestino] = useState<Id>('')
+  const faltam = aluno ? camposFaltando(aluno) : []
 
-  function enviar(e: FormEvent) {
-    e.preventDefault()
-    const n = Number(numero)
-    if (!Number.isInteger(n) || n < 1 || n > 99) return setErro('O número de chamada vai de 1 a 99.')
-    const usado = numerosUsados(db, turma.id, props.aluno?.id).get(n)
-    if (usado) return setErro(`O nº ${n} já é de ${usado.iniciais} Confira no diário.`)
-    const problema = validarIniciais(iniciais)
-    if (problema) return setErro(problema)
-    props.aoSalvar({ numero: n, iniciais: normalizarIniciais(iniciais)!, anoIngresso: anoNumero })
+  function salvar(dados: Partial<DadosAluno>) {
+    if (aluno) atualizarAluno(aluno.id, dados)
+    else if (Object.values(dados).some((v) => v !== '' && v != null)) props.aoCriar?.(dados)
   }
 
+  function confirmarSaida(e: FormEvent) {
+    e.preventDefault()
+    if (!aluno) return
+    setAcao(null)
+    if (motivo === 'engano') {
+      excluirCadastroDoAluno(aluno.id)
+      props.aoAvisar(`O cadastro do ${alunoEmTexto(aluno)}, feito por engano, foi excluído.`)
+      return
+    }
+    registrarSaida(aluno.id, motivo)
+    props.aoAvisar(`O ${alunoEmTexto(aluno)} saiu da lista.${temRespostas(db, aluno.id) ? ' As respostas já lançadas continuam nos resultados.' : ''}`)
+  }
+
+  function confirmarMudanca(e: FormEvent) {
+    e.preventDefault()
+    const nova = outrasTurmas.find((t) => t.id === destino)
+    if (!aluno || !nova) return
+    mudarDeTurma(aluno.id, nova.id)
+    setAcao(null)
+    props.aoAvisar(`O ${alunoEmTexto(aluno)} foi para o ${turmaNome(nova)}. As respostas já lançadas ficam nesta turma.`)
+  }
+
+  const casa = (campo: CampoAluno) => `linha-aluno-casa ${aluno && faltam.includes(campo) ? 'faltando' : ''}`
+
   return (
-    <form className="cartao form form-aluno" onSubmit={enviar} noValidate>
-      {props.titulo && <h3 className="subtitulo">{props.titulo}</h3>}
-      {props.explicacao && <p className="texto-2 pequeno">{props.explicacao}</p>}
-      <div className="form-grade">
-        <label className="campo">
-          <span>Nº de chamada</span>
-          <input
-            inputMode="numeric"
-            value={numero}
-            onChange={(e) => {
-              setNumero(e.target.value.replace(/\D/g, ''))
-              setErro(null)
-            }}
-            className="input-curto"
-          />
-        </label>
-        <label className="campo">
-          <span>Iniciais</span>
-          <input
-            value={iniciais}
-            onChange={(e) => {
-              setIniciais(e.target.value)
-              setErro(null)
-            }}
-            placeholder="A.C.S."
-            autoFocus
-            aria-describedby="ajuda-iniciais"
-          />
-          <span id="ajuda-iniciais" className="campo-ajuda">
-            Só as iniciais, como A.C.S. O site não guarda o nome completo.
+    <div className={`linha-aluno ${cor} ${aluno ? '' : 'nova'}`}>
+      <span className={`${casa('numero')} ${repetido ? 'repetido' : ''}`} data-rotulo="Nº na chamada">
+        <input
+          data-campo
+          key={aluno?.numero ?? ''}
+          defaultValue={aluno?.numero ?? ''}
+          placeholder={aluno ? 'falta' : 'Nº'}
+          aria-label={aluno ? `Número de chamada de ${identificacao(aluno)}` : 'Número de chamada do novo aluno'}
+          maxLength={20}
+          onBlur={(e: FocusEvent<HTMLInputElement>) => {
+            const valor = e.currentTarget.value.trim()
+            if (valor !== (aluno?.numero ?? '')) salvar({ numero: valor })
+          }}
+        />
+      </span>
+      <span className={casa('iniciais')} data-rotulo="Iniciais">
+        <input
+          data-campo
+          key={aluno?.iniciais ?? ''}
+          defaultValue={aluno?.iniciais ?? ''}
+          placeholder={aluno ? 'falta' : 'Iniciais'}
+          aria-label={aluno ? `Iniciais do nº ${aluno.numero || 'sem número'}` : 'Iniciais do novo aluno'}
+          maxLength={20}
+          autoCapitalize="characters"
+          onInput={(e) => {
+            const campo = e.currentTarget
+            const posicao = campo.selectionStart
+            campo.value = campo.value.toUpperCase()
+            if (posicao != null) campo.setSelectionRange(posicao, posicao)
+          }}
+          onBlur={(e: FocusEvent<HTMLInputElement>) => {
+            const valor = formatarIniciais(e.currentTarget.value)
+            e.currentTarget.value = valor
+            if (valor !== (aluno?.iniciais ?? '')) salvar({ iniciais: valor })
+          }}
+        />
+      </span>
+      <span className={`${casa('sexo')} linha-aluno-sexo`} role="group" aria-label="Sexo" data-rotulo="Sexo">
+        {(['F', 'M'] as Sexo[]).map((sexo) => (
+          <button
+            key={sexo}
+            type="button"
+            className={`bolha ${aluno?.sexo === sexo ? 'marcada' : ''}`}
+            aria-pressed={aluno?.sexo === sexo}
+            aria-label={sexo === 'F' ? 'Feminino' : 'Masculino'}
+            onClick={() => salvar({ sexo: aluno?.sexo === sexo ? null : sexo })}
+          >
+            {sexo}
+          </button>
+        ))}
+      </span>
+      <span className={casa('anoIngresso')} data-rotulo="Entrou no colégio">
+        <select
+          data-campo
+          value={aluno?.anoIngresso ?? ''}
+          aria-label="Ano em que entrou no colégio"
+          onChange={(e) => salvar({ anoIngresso: e.target.value ? Number(e.target.value) : null })}
+        >
+          <option value="">{aluno ? 'falta' : 'Ano'}</option>
+          {anosDeEntrada(turma.anoLetivo).map((ano) => (
+            <option key={ano} value={ano}>
+              {ano === turma.anoLetivo ? `${ano} (este ano)` : ano}
+            </option>
+          ))}
+        </select>
+      </span>
+      <span className="linha-aluno-acoes">
+        {aluno && acao === null && (
+          <>
+            {ehNovo(aluno, turma.anoLetivo) && <span className="tag-novo">Novo</span>}
+            {outrasTurmas.length > 0 && (
+              <button type="button" className="btn btn-pequeno btn-fantasma" onClick={() => setAcao('mudar')} aria-label={`Mudar ${identificacao(aluno)} de turma`}>
+                <ArrowRightLeft size={14} aria-hidden /> Mudar de turma
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-pequeno btn-fantasma"
+              onClick={() => {
+                setMotivo('transferencia')
+                setAcao('saida')
+              }}
+              aria-label={`Tirar ${identificacao(aluno)} da lista`}
+            >
+              <LogOut size={14} aria-hidden /> Tirar da lista
+            </button>
+          </>
+        )}
+        {aluno && acao === 'saida' && (
+          <form className="inline-acoes" onSubmit={confirmarSaida}>
+            <select className="select-compacto" value={motivo} onChange={(e) => setMotivo(e.target.value as MotivoSaida | 'engano')} aria-label="Por que sai da lista">
+              {MOTIVOS.map((m) => (
+                <option key={m} value={m}>
+                  {NOMES_MOTIVO[m]}
+                </option>
+              ))}
+              {!temRespostas(db, aluno.id) && <option value="engano">Foi cadastrado por engano</option>}
+            </select>
+            <button type="submit" className="btn btn-pequeno btn-primario">
+              Tirar da lista
+            </button>
+            <button type="button" className="btn btn-pequeno btn-fantasma" onClick={() => setAcao(null)}>
+              Cancelar
+            </button>
+          </form>
+        )}
+        {aluno && acao === 'mudar' && (
+          <form className="inline-acoes" onSubmit={confirmarMudanca}>
+            <select className="select-compacto" value={destino} onChange={(e) => setDestino(e.target.value)} aria-label="Turma de destino">
+              <option value="">Para qual turma?</option>
+              {outrasTurmas.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {turmaNome(t)}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="btn btn-pequeno btn-primario" disabled={!destino}>
+              Mudar
+            </button>
+            <button type="button" className="btn btn-pequeno btn-fantasma" onClick={() => setAcao(null)}>
+              Cancelar
+            </button>
+          </form>
+        )}
+        {repetido && (
+          <span className="texto-alerta pequeno">
+            <TriangleAlert size={14} aria-hidden /> nº repetido
           </span>
-        </label>
-        <label className="campo">
-          <span>Ano em que entrou neste colégio</span>
-          <select value={ano} onChange={(e) => setAno(e.target.value)}>
-            {anosDeEntrada(turma.anoLetivo).map((a) => (
-              <option key={a} value={a}>
-                {a === turma.anoLetivo ? `${a} (entrou este ano)` : a}
-              </option>
-            ))}
-            <option value="">Não sei</option>
-          </select>
-          {entrada && <span className={`campo-ajuda ${entrada.problema ? 'erro-campo' : ''}`}>Conferência: {entrada.texto}.</span>}
-        </label>
-      </div>
-      {erro && <p className="erro-campo">{erro}</p>}
-      <div className="form-acoes">
-        <button type="submit" className="btn btn-primario">
-          {props.rotuloSalvar}
-        </button>
-        <button type="button" className="btn btn-fantasma" onClick={props.aoCancelar}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+        )}
+      </span>
+    </div>
   )
 }

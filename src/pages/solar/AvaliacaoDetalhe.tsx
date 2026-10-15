@@ -3,7 +3,7 @@ import { useState, type ChangeEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { SeletorHabilidade } from '../../components/SeletorHabilidade'
 import { Aviso, Cabecalho, Cartao, Confirmacao, Janela, Vazio } from '../../components/ui'
-import { buscarHabilidade, DISCIPLINAS } from '../../data/bncc'
+import { buscarHabilidade } from '../../data/bncc'
 import { cadernosDaAvaliacao, descreverPeriodo, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
 import { dataCurta, dataLonga, plural, serieNome, tamanhoArquivo } from '../../lib/formato'
 import {
@@ -25,7 +25,7 @@ import {
 import { baixarPdfDoCaderno } from '../../store/arquivos'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import { LETRAS, SERIES, type Caderno, type Db, type Letra, type Questao, type Serie } from '../../types'
+import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, type Caderno, type Db, type Letra, type Questao, type Serie } from '../../types'
 import { FormularioAvaliacao, pendenciasDoCaderno } from './Avaliacoes'
 
 const LIMITE_PDF_MB = 50
@@ -293,7 +293,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
                 {caderno.pdf.origem === 'exemplo' ? 'arquivo de exemplo' : `enviado em ${dataLonga(caderno.pdf.enviadoEm)}`}
               </p>
             ) : (
-              <p className="texto-2 pequeno">Ainda não enviado. Os professores baixam a prova por aqui para imprimir.</p>
+              <p className="texto-2 pequeno">Ainda não enviado. A coordenação de cada colégio baixa a prova na aba Provas para imprimir.</p>
             )}
             {editavel && (
               <div className="form-acoes">
@@ -338,10 +338,14 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
                 ))}
               </div>
             </div>
-            <label className="checkbox">
-              <input type="checkbox" checked={caderno.usaFolhaRespostas} onChange={(e) => definirFolhaRespostas(caderno.id, e.target.checked)} />
-              Os alunos marcam numa folha de respostas separada
-            </label>
+            {caderno.serie === 5 ? (
+              <label className="checkbox">
+                <input type="checkbox" checked={caderno.usaFolhaRespostas} onChange={(e) => definirFolhaRespostas(caderno.id, e.target.checked)} />
+                Os alunos marcam numa folha de respostas separada
+              </label>
+            ) : (
+              <p className="campo-ajuda">Do 1º ao 4º ano, os alunos marcam na própria prova. A folha de respostas é só do 5º ano.</p>
+            )}
           </div>
 
           <div className="bloco-config">
@@ -411,7 +415,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
                     editarQuestao(caderno.id, i, { disciplina, habilidade: manter ? q.habilidade : null })
                   }}
                 >
-                  {DISCIPLINAS.map((d) => (
+                  {DISCIPLINAS_DA_PROVA.map((d) => (
                     <option key={d}>{d}</option>
                   ))}
                 </select>
@@ -421,7 +425,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
                     disciplina={q.disciplina}
                     valor={q.habilidade}
                     aoMudar={(h) =>
-                      editarQuestao(caderno.id, i, h ? { habilidade: h.codigo, disciplina: DISCIPLINAS.includes(h.componente) ? h.componente : q.disciplina } : { habilidade: null })
+                      editarQuestao(caderno.id, i, h ? { habilidade: h.codigo, disciplina: DISCIPLINAS_DA_PROVA.includes(h.componente) ? h.componente : q.disciplina } : { habilidade: null })
                     }
                   />
                 </fieldset>

@@ -6,7 +6,6 @@ import {
   type Aluno,
   type Caderno,
   type Colegio,
-  type Config,
   type Db,
   type Id,
   type Lancamento,
@@ -111,8 +110,6 @@ export interface FiltroResultados {
   serie?: Serie | null
   colegioId?: Id | null
   turmaId?: Id | null
-  /** Alunos que aguardam a confirmação da coordenação ficam fora, a não ser que se peça. */
-  incluirPendentes?: boolean
 }
 
 export function coletarResultados(db: Db, filtro: FiltroResultados): ResultadoAluno[] {
@@ -134,7 +131,6 @@ export function coletarResultados(db: Db, filtro: FiltroResultados): ResultadoAl
       const colegio = colegios.get(turma.colegioId)
       if (!colegio) continue
       for (const aluno of alunosDaTurma(db, turma.id, lancamento)) {
-        if (aluno.pendente && !filtro.incluirPendentes) continue
         const resposta = lancamento?.respostas[aluno.id]
         const completo = respostaCompleta(caderno, resposta)
         saida.push({
@@ -161,20 +157,15 @@ export function mediaPct(resultados: ResultadoAluno[]): number | null {
   return lista.length ? lista.reduce((soma, r) => soma + r.correcao.pct, 0) / lista.length : null
 }
 
-export const NOMES_FAIXAS = ['Abaixo do básico', 'Básico', 'Adequado', 'Avançado'] as const
-export type Faixa = 0 | 1 | 2 | 3
+/** Faixas de acerto, de 20 em 20 pontos: uma informação objetiva no lugar de rótulos como "básico". */
+export const NOMES_FAIXAS = ['Menos de 20%', '20% a 39%', '40% a 59%', '60% a 79%', '80% ou mais'] as const
+export type Faixa = 0 | 1 | 2 | 3 | 4
 
-export function faixaDe(pct: number, config: Config): Faixa {
-  const [basico, adequado, avancado] = config.faixas
-  if (pct >= avancado) return 3
-  if (pct >= adequado) return 2
-  if (pct >= basico) return 1
-  return 0
-}
+export const faixaDe = (pct: number): Faixa => Math.max(0, Math.min(4, Math.floor(pct / 20))) as Faixa
 
-export function contarFaixas(resultados: ResultadoAluno[], config: Config): [number, number, number, number] {
-  const contagem: [number, number, number, number] = [0, 0, 0, 0]
-  for (const r of avaliados(resultados)) contagem[faixaDe(r.correcao.pct, config)]++
+export function contarFaixas(resultados: ResultadoAluno[]): [number, number, number, number, number] {
+  const contagem: [number, number, number, number, number] = [0, 0, 0, 0, 0]
+  for (const r of avaliados(resultados)) contagem[faixaDe(r.correcao.pct)]++
   return contagem
 }
 
@@ -355,6 +346,12 @@ export const ehNovo = (aluno: Pick<Aluno, 'anoIngresso'>, anoLetivo: number) => 
 export function separarPorIngresso(resultados: ResultadoAluno[]): Record<GrupoIngresso, ResultadoAluno[]> {
   const grupos: Record<GrupoIngresso, ResultadoAluno[]> = { novos: [], antigos: [], sem_ano: [] }
   for (const r of resultados) grupos[grupoIngresso(r.aluno, r.turma.anoLetivo)].push(r)
+  return grupos
+}
+
+export function separarPorSexo(resultados: ResultadoAluno[]): Record<'F' | 'M' | 'sem', ResultadoAluno[]> {
+  const grupos: Record<'F' | 'M' | 'sem', ResultadoAluno[]> = { F: [], M: [], sem: [] }
+  for (const r of resultados) grupos[r.aluno.sexo ?? 'sem'].push(r)
   return grupos
 }
 

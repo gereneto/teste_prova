@@ -192,7 +192,7 @@ export function FormularioAvaliacao(props: {
               </label>
             ))}
           </div>
-          <p className="campo-ajuda">Cada prova começa com 16 questões (1º e 2º ano) ou 20 (3º ao 5º), misturando as disciplinas. Dá para mudar depois.</p>
+          <p className="campo-ajuda">Cada prova começa com 16 questões (1º e 2º ano) ou 20 (3º ao 5º), metade de Português e metade de Matemática. Dá para mudar depois.</p>
         </fieldset>
       )}
       {erro && <p className="erro-campo">{erro}</p>}

@@ -1,8 +1,25 @@
 import { FileSpreadsheet, Pencil } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { ComparacaoIngresso } from '../../components/ComparacaoIngresso'
-import { Aviso, BarraFaixas, Barras, Cabecalho, Cartao, Explicacao, Kpi, LembreteCooperacao, MiniBarra, NOMES_STATUS, Selo, SeloFaixa, Vazio, type Tom } from '../../components/ui'
+import { ComparacaoGrupos } from '../../components/ComparacaoGrupos'
+import {
+  Aviso,
+  Barras,
+  Cabecalho,
+  Cartao,
+  ColunasPorQuestao,
+  Explicacao,
+  Histograma,
+  Kpi,
+  LegendaFaixas,
+  LembreteCooperacao,
+  MiniBarra,
+  MiniFaixas,
+  NOMES_STATUS,
+  Selo,
+  Vazio,
+  type Tom,
+} from '../../components/ui'
 import { buscarHabilidade, ordemDisciplina } from '../../data/bncc'
 import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDaSerie, etapaAvaliacao, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
 import {
@@ -21,17 +38,17 @@ import {
   participacao,
   progressoDe,
   separarPorIngresso,
+  separarPorSexo,
   type AlertaQuestao,
   type AnaliseQuestao,
   type ResultadoAluno,
 } from '../../lib/estatisticas'
 import { AVISO_COMPARACAO, baixarCsv, paraNomeDeArquivo } from '../../lib/exportar'
 import { compararTexto, pct, plural, resumir, serieNome, turmaNome } from '../../lib/formato'
-import { LIMITE_RETOMAR, MINIMO_QUADRO, quadroColegioQuestao } from '../../lib/leitura'
+import { LIMITE_METADE, MINIMO_QUADRO, quadroColegioQuestao } from '../../lib/leitura'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import { BRANCO, LETRAS, RASURA, SERIES, type Caderno, type Colegio, type Config, type Db, type Serie } from '../../types'
-import { MiniFaixas } from '../coordenacao/ResultadosColegio'
+import { BRANCO, LETRAS, RASURA, SERIES, type Caderno, type Colegio, type Db, type Serie } from '../../types'
 
 const ALERTAS: Record<AlertaQuestao, { rotulo: string; texto: string; tom: Tom }> = {
   gabarito_suspeito: {
@@ -45,8 +62,9 @@ const ALERTAS: Record<AlertaQuestao, { rotulo: string; texto: string; tom: Tom }
 }
 
 const HABILIDADES_VISIVEIS = 10
-/** Turma "pode precisar de apoio" quando pelo menos esta parte dos alunos ficou abaixo do básico. */
+/** Turma "pode precisar de apoio" quando pelo menos esta parte dos alunos acertou menos de 40% da prova. */
 const PCT_APOIO = 30
+const nomesFaixasCsv = NOMES_FAIXAS.map((f) => `Alunos com ${f.toLowerCase()} de acertos`)
 /** Acima desta parte de faltas, a média da turma diz pouco. */
 const PCT_FALTAS_ALTO = 20
 
@@ -75,11 +93,9 @@ export default function ResultadosRede() {
 
   if (!avaliacao) return <Vazio titulo="Ainda não há avaliações" />
 
-  const config = db.config
   const lista = avaliados(resultados)
   const part = participacao(resultados)
   const media = mediaPct(resultados)
-  const contagemFaixas = contarFaixas(resultados, config)
   const colegios = [...db.colegios].sort((a, b) => compararTexto(a.nome, b.nome))
   const colegio = db.colegios.find((c) => c.id === colegioId)
   const escopo = [serie ? serieNome(serie) : 'todos os anos', colegio ? colegio.nome : 'todos os colégios'].join(' · ')
@@ -91,7 +107,7 @@ export default function ResultadosRede() {
     .map(([turma, rs]) => {
       const caderno = cadernoDaSerie(db, avaliacao.id, turma.serie)
       const p = participacao(rs)
-      const faixas = contarFaixas(rs, config)
+      const faixas = contarFaixas(rs)
       const total = faixas.reduce((s, v) => s + v, 0)
       return {
         turma,
@@ -102,7 +118,7 @@ export default function ResultadosRede() {
         media: mediaPct(rs),
         faixas,
         novos: avaliados(rs).filter((r) => ehNovo(r.aluno, anoLetivo)).length,
-        pctAbaixo: total ? (100 * faixas[0]) / total : 0,
+        pctAbaixo: total ? (100 * (faixas[0] + faixas[1])) / total : 0,
         pctFaltas: p.lancados ? (100 * p.faltas) / p.lancados : 0,
         progresso: caderno ? progressoDe(db, caderno, turma.id) : null,
       }
@@ -128,7 +144,7 @@ export default function ResultadosRede() {
   function exportarTurmas() {
     baixarCsv(
       `turmas-${nomeArquivo}.csv`,
-      ['Colégio', 'Cidade', 'UF', 'Turma', 'Turno', 'Alunos', 'Avaliados', 'Faltas', 'Prova adaptada', 'Novos no colégio', 'Média de acertos (%)', ...NOMES_FAIXAS],
+      ['Colégio', 'Cidade', 'UF', 'Turma', 'Turno', 'Alunos', 'Avaliados', 'Faltas', 'Prova adaptada', 'Novos no colégio', 'Acerto médio (%)', ...nomesFaixasCsv],
       turmas.map((t) => [
         t.colegio.nome,
         t.colegio.cidade,
@@ -158,18 +174,22 @@ export default function ResultadosRede() {
     )
   }
 
-  function exportarIngresso() {
+  function exportarGrupos() {
     const grupos = separarPorIngresso(resultados)
+    const sexo = separarPorSexo(resultados)
     const linhas = [
       { rotulo: 'Novos no colégio', lista: grupos.novos },
       { rotulo: 'Antigos', lista: grupos.antigos },
       ...agruparPorAnoDeIngresso(resultados).map((g) => ({ rotulo: `Entraram em ${g.rotulo}`, lista: g.resultados })),
       { rotulo: 'Sem ano de entrada informado', lista: grupos.sem_ano },
+      { rotulo: 'Meninas', lista: sexo.F },
+      { rotulo: 'Meninos', lista: sexo.M },
+      { rotulo: 'Sem sexo informado', lista: sexo.sem },
     ]
     baixarCsv(
-      `novos-e-antigos-${nomeArquivo}.csv`,
-      ['Grupo', 'Alunos avaliados', 'Média de acertos (%)', ...NOMES_FAIXAS],
-      linhas.map((g) => [g.rotulo, avaliados(g.lista).length, mediaPct(g.lista), ...contarFaixas(g.lista, config)]),
+      `grupos-${nomeArquivo}.csv`,
+      ['Grupo', 'Alunos avaliados', 'Acerto médio (%)', ...nomesFaixasCsv],
+      linhas.map((g) => [g.rotulo, avaliados(g.lista).length, mediaPct(g.lista), ...contarFaixas(g.lista)]),
     )
   }
 
@@ -245,8 +265,8 @@ export default function ResultadosRede() {
             <button className="btn btn-pequeno" onClick={exportarHabilidades} disabled={!lista.length}>
               <FileSpreadsheet size={15} aria-hidden /> Habilidades
             </button>
-            <button className="btn btn-pequeno" onClick={exportarIngresso} disabled={!lista.length}>
-              <FileSpreadsheet size={15} aria-hidden /> Novos e antigos
+            <button className="btn btn-pequeno" onClick={exportarGrupos} disabled={!lista.length}>
+              <FileSpreadsheet size={15} aria-hidden /> Grupos de alunos
             </button>
             {caderno && (
               <button className="btn btn-pequeno" onClick={exportarQuestoes} disabled={!lista.length}>
@@ -271,40 +291,46 @@ export default function ResultadosRede() {
             Use estas comparações para descobrir onde apoiar e quem pode compartilhar o que deu certo, não para classificar colégios ou professores.
           </LembreteCooperacao>
 
-          <div className="grade grade-kpis">
+          <div className="grade grade-kpis grade-kpis-3">
+            <Kpi rotulo="Acerto médio" valor={pct(media)} detalhe={escopo} />
             <Kpi rotulo="Alunos avaliados" valor={part.avaliados.toLocaleString('pt-BR')} detalhe={`${part.lancados} de ${part.matriculados} já lançados · ${plural(part.faltas, 'falta', 'faltas')}`} />
-            <Kpi rotulo="Média de acertos" valor={pct(media)} detalhe={media != null && <SeloFaixa valor={media} config={config} />} />
-            <Kpi rotulo="Turmas concluídas" valor={`${concluidas} de ${turmas.length}`} detalhe={escopo} />
-            <Kpi rotulo={NOMES_FAIXAS[0]} valor={pct((100 * contagemFaixas[0]) / lista.length)} detalhe={plural(contagemFaixas[0], 'aluno', 'alunos')} />
+            <Kpi rotulo="Turmas que concluíram o lançamento" valor={`${concluidas} de ${turmas.length}`} />
           </div>
 
           <div className="grade grade-2">
-            <Cartao titulo="Faixas de desempenho" sub={escopo}>
-              <BarraFaixas resultados={resultados} config={config} />
+            <Cartao titulo="Alunos por faixa de acerto" sub={escopo}>
+              <Histograma resultados={resultados} />
             </Cartao>
-            <Cartao titulo="Por disciplina" sub="Percentual de acertos nas questões de cada disciplina">
-              <Barras config={config} itens={porDisciplina.map((d) => ({ chave: d.chave, rotulo: d.chave, valor: d.pct, detalhe: plural(d.questoes, 'questão', 'questões') }))} />
+            <Cartao titulo="Acerto por disciplina">
+              <Barras itens={porDisciplina.map((d) => ({ chave: d.chave, rotulo: d.chave, valor: d.pct, detalhe: plural(d.questoes, 'questão', 'questões') }))} />
             </Cartao>
           </div>
 
           {(!colegioId || !serie) && (
             <div className={`grade ${!colegioId && !serie ? 'grade-2' : ''}`}>
               {!colegioId && (
-                <Cartao titulo="Média por colégio" sub="Em ordem alfabética.">
-                  <Barras config={config} itens={porColegio} />
+                <Cartao titulo="Acerto médio por colégio" sub="Em ordem alfabética.">
+                  <Barras itens={porColegio} />
                 </Cartao>
               )}
               {!serie && (
-                <Cartao titulo="Média por ano" sub="Cada ano fez uma prova diferente: estes números não dizem qual ano está melhor.">
-                  <Barras config={config} itens={porAno} />
+                <Cartao titulo="Acerto médio por ano" sub="Cada ano fez uma prova diferente: estes números não dizem qual ano está melhor.">
+                  <Barras itens={porAno} />
                 </Cartao>
               )}
             </div>
           )}
 
-          <Participacao resultados={resultados} colegios={colegios.filter((c) => !colegioId || c.id === colegioId)} />
+          {caderno && (
+            <Cartao titulo={`Acerto por questão · prova do ${serieNome(caderno.serie)}`} sub={escopo}>
+              <ColunasPorQuestao itens={analise.map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto, disciplina: a.questao.disciplina }))} />
+              <LegendaFaixas />
+            </Cartao>
+          )}
 
-          <ComparacaoIngresso resultados={resultados} config={config} />
+          <ComparacaoGrupos resultados={resultados} />
+
+          <Participacao resultados={resultados} colegios={colegios.filter((c) => !colegioId || c.id === colegioId)} />
 
           <Cartao
             titulo="Turmas"
@@ -318,7 +344,8 @@ export default function ResultadosRede() {
           >
             {soApoio && (
               <p className="texto-2 pequeno">
-                Turmas com {PCT_APOIO}% ou mais dos alunos abaixo do básico. Veja junto o que ajuda a explicar: alunos novos, faltas, tamanho da turma.
+                Turmas em que {PCT_APOIO}% ou mais dos alunos acertaram menos de 40% da prova. Veja junto o que ajuda a explicar: alunos novos, faltas,
+                tamanho da turma.
               </p>
             )}
             <div className="tabela-rolagem">
@@ -330,8 +357,8 @@ export default function ResultadosRede() {
                     <th className="num">Avaliados</th>
                     <th className="num">Novos</th>
                     <th className="num">Faltas</th>
-                    <th className="num">Média</th>
-                    <th>Faixas</th>
+                    <th className="num">Acerto médio</th>
+                    <th>Alunos por faixa de acerto</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -363,6 +390,7 @@ export default function ResultadosRede() {
                 </tbody>
               </table>
             </div>
+            <LegendaFaixas />
           </Cartao>
 
           <Cartao titulo="Habilidades da BNCC" sub="Da habilidade com menos acertos para a com mais">
@@ -388,7 +416,7 @@ export default function ResultadosRede() {
                         </td>
                         <td className="num">{d.questoes}</td>
                         <td className="coluna-barra">
-                          <MiniBarra valor={d.pct} config={config} />
+                          <MiniBarra valor={d.pct} />
                         </td>
                       </tr>
                     )
@@ -405,8 +433,8 @@ export default function ResultadosRede() {
 
           {caderno ? (
             <>
-              {!colegioId && <QuadroColegios caderno={caderno} resultados={resultados} colegios={colegios} config={config} />}
-              <AnaliseQuestoes caderno={caderno} analise={analise} config={config} editar={editarRede} />
+              {!colegioId && <QuadroColegios caderno={caderno} resultados={resultados} colegios={colegios} />}
+              <AnaliseQuestoes caderno={caderno} analise={analise} editar={editarRede} />
             </>
           ) : (
             <EscolherAno db={db} avaliacaoId={avaliacao.id} resultados={resultados} aoEscolher={(s) => filtrar('serie', String(s))} />
@@ -458,13 +486,13 @@ function Participacao({ resultados, colegios }: { resultados: ResultadoAluno[]; 
 }
 
 /** Cada questão da prova de um ano, colégio por colégio, com uma leitura pronta. */
-function QuadroColegios({ caderno, resultados, colegios, config }: { caderno: Caderno; resultados: ResultadoAluno[]; colegios: Colegio[]; config: Config }) {
+function QuadroColegios({ caderno, resultados, colegios }: { caderno: Caderno; resultados: ResultadoAluno[]; colegios: Colegio[] }) {
   const linhas = quadroColegioQuestao(caderno, resultados, colegios)
   const comLeitura = linhas.filter((l) => l.leitura)
   return (
     <Cartao
       titulo={`Pontos de melhoria · prova do ${serieNome(caderno.serie)}`}
-      sub={`Acerto de cada questão em cada colégio. Abaixo de ${LIMITE_RETOMAR}% em todos os colégios: rever a questão ou o material. Abaixo em um ou dois: apoiar esses colégios.`}
+      sub={`Acerto de cada questão em cada colégio. Menos de ${LIMITE_METADE}% de acertos em todos os colégios: rever a questão ou o material. Menos da metade só em um ou dois: apoiar esses colégios.`}
       acoes={<Explicacao>Colégios com menos de {MINIMO_QUADRO} alunos avaliados nesta prova aparecem em cinza: com tão poucos alunos, a diferença pode ser acaso.</Explicacao>}
     >
       <div className="tabela-rolagem">
@@ -498,12 +526,12 @@ function QuadroColegios({ caderno, resultados, colegios, config }: { caderno: Ca
                     const v = l.porColegio.get(c.id)
                     const poucos = !v || v.n < MINIMO_QUADRO
                     return (
-                      <td key={c.id} className={`num ${!poucos && v.pct != null ? `calor-${faixaDe(v.pct, config)}` : 'calor-poucos'}`}>
+                      <td key={c.id} className={`num ${!poucos && v.pct != null ? `calor-${faixaDe(v.pct)}` : 'calor-poucos'}`}>
                         {v?.pct == null ? '—' : pct(v.pct)}
                       </td>
                     )
                   })}
-                  <td className={`num ${l.rede != null ? `calor-${faixaDe(l.rede, config)}` : ''}`}>{pct(l.rede)}</td>
+                  <td className={`num ${l.rede != null ? `calor-${faixaDe(l.rede)}` : ''}`}>{pct(l.rede)}</td>
                   <td className="pequeno">
                     {l.leitura === 'todos' && <Selo tom="perigo">Rever questão ou material</Selo>}
                     {l.leitura === 'alguns' && <Selo tom="ambar">Apoiar colégios</Selo>}
@@ -539,7 +567,7 @@ function EscolherAno(props: { db: Db; avaliacaoId: string; resultados: Resultado
   )
 }
 
-function AnaliseQuestoes({ caderno, analise, config, editar }: { caderno: Caderno; analise: AnaliseQuestao[]; config: Config; editar: boolean }) {
+function AnaliseQuestoes({ caderno, analise, editar }: { caderno: Caderno; analise: AnaliseQuestao[]; editar: boolean }) {
   const [soComAlerta, setSoComAlerta] = useState(false)
   const letras = LETRAS.slice(0, caderno.numAlternativas)
   const comAlerta = analise.filter((a) => a.alertas.length)
@@ -593,7 +621,7 @@ function AnaliseQuestoes({ caderno, analise, config, editar }: { caderno: Cadern
                     )}
                   </td>
                   <td>{a.questao.anulada ? <span className="texto-2">anulada</span> : (a.questao.gabarito ?? <span className="texto-2">sem gabarito</span>)}</td>
-                  <td className="coluna-barra">{a.pctAcerto != null ? <MiniBarra valor={a.pctAcerto} config={config} /> : '—'}</td>
+                  <td className="coluna-barra">{a.pctAcerto != null ? <MiniBarra valor={a.pctAcerto} /> : '—'}</td>
                   <td className="marcacoes">
                     {a.n > 0 &&
                       letras.map((l) => (

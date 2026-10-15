@@ -39,7 +39,6 @@ describe('dados de exemplo', () => {
       ...db.alunos,
       ...db.cadernos,
       ...db.lancamentos,
-      ...db.pedidos,
       ...db.historico,
     ].map((x) => x.id)
     expect(new Set(ids).size).toBe(ids.length)
@@ -52,14 +51,37 @@ describe('dados de exemplo', () => {
     }
   })
 
-  it('numeram os alunos de cada turma de 1 em diante, sem repetir', () => {
+  it('numeram os alunos de cada turma sem repetir número', () => {
     for (const turma of db.turmas) {
       const lancamento = db.lancamentos.find((l) => l.turmaId === turma.id)
-      const numeros = (turma.anoLetivo === 2026 ? db.alunos.filter((a) => a.turmaId === turma.id && a.ativo) : alunosDaTurma(db, turma.id, lancamento))
-        .map((a) => a.numero)
-        .sort((a, b) => a - b)
-      expect(numeros).toEqual(numeros.map((_, i) => i + 1))
+      const lista = turma.anoLetivo === 2026 ? db.alunos.filter((a) => a.turmaId === turma.id && a.ativo) : alunosDaTurma(db, turma.id, lancamento)
+      const numeros = lista.map((a) => a.numero).filter(Boolean)
+      expect(new Set(numeros).size).toBe(numeros.length)
+      if (turma.anoLetivo === 2025) expect(numeros.map(Number).sort((a, b) => a - b)).toEqual(numeros.map((_, i) => i + 1))
     }
+  })
+
+  it('têm só Português e Matemática, com folha de respostas só no 5º ano', () => {
+    for (const caderno of db.cadernos) {
+      expect(new Set(caderno.questoes.map((q) => q.disciplina))).toEqual(new Set(['Português', 'Matemática']))
+      expect(caderno.usaFolhaRespostas).toBe(caderno.serie === 5)
+    }
+  })
+
+  it('registram o sexo dos alunos, com alguns dados faltando para o lembrete aparecer', () => {
+    const ativos = db.alunos.filter((a) => a.ativo)
+    const meninas = ativos.filter((a) => a.sexo === 'F').length / ativos.length
+    expect(meninas).toBeGreaterThan(0.4)
+    expect(meninas).toBeLessThan(0.6)
+    expect(ativos.filter((a) => a.sexo === null)).toHaveLength(2)
+    expect(ativos.filter((a) => a.numero === '')).toHaveLength(1)
+  })
+
+  it('dão a cada pessoa um link de acesso diferente, e a cada colégio alguém da Solar', () => {
+    const tokens = [...db.professores, ...db.coordenadores, ...db.equipeSolar].map((p) => p.token)
+    expect(new Set(tokens).size).toBe(tokens.length)
+    expect(tokens.every((t) => /^[a-z0-9]{20}$/.test(t))).toBe(true)
+    for (const colegio of db.colegios) expect(db.equipeSolar.find((m) => m.id === colegio.membroSolarId)?.papel).not.toBe('visualizacao')
   })
 
   it('registram o ano de entrada de cada aluno, com parte deles novos no colégio', () => {
@@ -139,13 +161,12 @@ describe('dados de exemplo', () => {
     expect(db.equipeSolar.filter((m) => m.papel === 'responsavel')).toHaveLength(1)
   })
 
-  it('trazem um aluno pendente com a prova já lançada, fora dos números do colégio', () => {
-    const pedido = db.pedidos.find((p) => p.tipo === 'incluir' && p.professorId === PESSOAS_DE_TESTE.professorId && p.situacao === 'pendente')!
-    const lancamento = lancamentoDe(db, 'cad-2026-3', pedido.turmaId)!
-    expect(lancamento.respostas[pedido.alunoId]).toBeDefined()
-    const doColegio = coletarResultados(db, { avaliacaoId: 'av-2026', turmaId: pedido.turmaId })
-    expect(doColegio.some((r) => r.aluno.id === pedido.alunoId)).toBe(false)
-    const comPendentes = coletarResultados(db, { avaliacaoId: 'av-2026', turmaId: pedido.turmaId, incluirPendentes: true })
-    expect(comPendentes.some((r) => r.aluno.id === pedido.alunoId)).toBe(true)
+  it('trazem avisos de mudanças feitas por professores, para a coordenação marcar que está ciente', () => {
+    const avisos = db.historico.filter((e) => e.avisarCoordenacao && e.colegioId === PESSOAS_DE_TESTE.colegioId)
+    expect(avisos).toHaveLength(3)
+    expect(avisos.filter((e) => !e.ciente)).toHaveLength(2)
+    const inclusao = avisos.find((e) => e.tipo === 'inclusao')!
+    expect(lancamentoDe(db, 'cad-2026-3', inclusao.turmaId!)!.respostas[inclusao.alunoId!]).toBeDefined()
+    expect(inclusao.texto).toMatch(/^Incluiu o nº \d+ \(L\.M\.R\.\) na lista: sexo feminino e entrou no colégio em 2026\.$/)
   })
 })

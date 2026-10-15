@@ -1,9 +1,10 @@
 import { Crown, Pencil, Plus, UserMinus } from 'lucide-react'
 import { useState } from 'react'
+import { AvisoEnvio, BotaoReenviar } from '../../components/AvisoEnvio'
 import { FormularioContato } from '../../components/FormularioContato'
 import { Aviso, Cabecalho, Cartao, Confirmacao, Selo } from '../../components/ui'
 import { permissoesDe, pessoaDoPerfil, responsavelSolar } from '../../lib/consultas'
-import { compararTexto } from '../../lib/formato'
+import { compararTexto, listaEmTexto } from '../../lib/formato'
 import { adicionarMembroSolar, editarMembroSolar, mudarPapelSolar, passarResponsabilidadeSolar, removerMembroSolar } from '../../store/acoes'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
@@ -23,9 +24,15 @@ export default function EquipeSolar() {
   const [editandoId, setEditandoId] = useState<Id | null>(null)
   const [tirando, setTirando] = useState<MembroSolar | null>(null)
   const [passando, setPassando] = useState<MembroSolar | null>(null)
+  const [enviado, setEnviado] = useState<string | null>(null)
   const eu = perfil ? pessoaDoPerfil(db, perfil) : null
   const { gerirEquipeSolar } = permissoesDe(eu)
   const responsavel = responsavelSolar(db)
+  const colegiosDe = (membroId: Id) =>
+    db.colegios
+      .filter((c) => c.membroSolarId === membroId)
+      .map((c) => c.nome)
+      .sort(compararTexto)
 
   return (
     <>
@@ -64,12 +71,14 @@ export default function EquipeSolar() {
             </fieldset>
           }
           aoSalvar={(contato) => {
-            adicionarMembroSolar(contato, papelNovo)
+            setEnviado(adicionarMembroSolar(contato, papelNovo).emailEnviado)
             setIncluindo(false)
           }}
           aoCancelar={() => setIncluindo(false)}
         />
       )}
+
+      <AvisoEnvio email={enviado} aoFechar={() => setEnviado(null)} />
 
       {(['responsavel', 'edicao', 'visualizacao'] as const).map((papel) => {
         const pessoas = db.equipeSolar.filter((m) => m.papel === papel).sort((a, b) => compararTexto(a.nome, b.nome))
@@ -86,7 +95,7 @@ export default function EquipeSolar() {
                         inicial={membro}
                         rotuloSalvar="Salvar"
                         aoSalvar={(contato) => {
-                          editarMembroSolar(membro.id, contato)
+                          setEnviado(editarMembroSolar(membro.id, contato).emailEnviado)
                           setEditandoId(null)
                         }}
                         aoCancelar={() => setEditandoId(null)}
@@ -99,12 +108,14 @@ export default function EquipeSolar() {
                           {membro.nome} {eu?.papel === 'solar' && eu.membro.id === membro.id && <Selo>Você</Selo>}
                         </p>
                         <p className="texto-2 pequeno">{[membro.email, membro.telefone].filter(Boolean).join(' · ')}</p>
+                        {colegiosDe(membro.id).length > 0 && <p className="texto-2 pequeno">Cuida de {listaEmTexto(colegiosDe(membro.id))}.</p>}
                       </div>
                       {gerirEquipeSolar && (
                         <div className="form-acoes">
                           <button className="btn btn-pequeno btn-fantasma" onClick={() => setEditandoId(membro.id)}>
                             <Pencil size={14} aria-hidden /> Editar
                           </button>
+                          {!(eu?.papel === 'solar' && eu.membro.id === membro.id) && <BotaoReenviar tipo="solar" id={membro.id} aoEnviar={setEnviado} />}
                           {membro.papel !== 'responsavel' && (
                             <>
                               <select

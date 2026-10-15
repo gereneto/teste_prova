@@ -1,5 +1,6 @@
 import { Pencil, Plus, UserCheck, UserX, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { AvisoEnvio, BotaoReenviar } from '../../components/AvisoEnvio'
 import { Aviso, Cabecalho, Cartao, Confirmacao, Selo, Vazio } from '../../components/ui'
 import { turmasDoColegio, turmasDoProfessor } from '../../lib/consultas'
 import { compararTexto, plural, serieNome, turmaNome } from '../../lib/formato'
@@ -17,6 +18,7 @@ export default function ProfessoresEscola() {
   const [editandoId, setEditandoId] = useState<Id | null>(null)
   const [desativando, setDesativando] = useState<Professor | null>(null)
   const [salvo, setSalvo] = useState<Id | null>(null)
+  const [enviado, setEnviado] = useState<{ email: string; onde: 'topo' | 'lista' } | null>(null)
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   if (!colegio) return null
 
@@ -50,12 +52,15 @@ export default function ProfessoresEscola() {
         <FormularioProfessor
           rotuloSalvar="Cadastrar professor"
           aoSalvar={(dados) => {
-            criarProfessor(colegio.id, dados)
+            const { emailEnviado } = criarProfessor(colegio.id, dados)
+            setEnviado(emailEnviado ? { email: emailEnviado, onde: 'topo' } : null)
             setCriando(false)
           }}
           aoCancelar={() => setCriando(false)}
         />
       )}
+
+      <AvisoEnvio email={enviado?.onde === 'topo' ? enviado.email : null} aoFechar={() => setEnviado(null)} />
 
       {(semProfessor.length > 0 || semTurma.length > 0) && (
         <Aviso tom="atencao">
@@ -123,7 +128,11 @@ export default function ProfessoresEscola() {
         </div>
       </Cartao>
 
-      <Cartao titulo="Professores com acesso" sub="Na versão final, cada professor entra no site com o e-mail cadastrado aqui.">
+      <Cartao
+        titulo="Professores com acesso"
+        sub="Ao ser cadastrado, cada professor recebe no e-mail um link que entra direto no site, sem senha. Se o e-mail for corrigido, o link vai para o novo endereço."
+      >
+        <AvisoEnvio email={enviado?.onde === 'lista' ? enviado.email : null} aoFechar={() => setEnviado(null)} />
         {!professores.length ? (
           <Vazio titulo="Nenhum professor cadastrado" />
         ) : (
@@ -148,7 +157,8 @@ export default function ProfessoresEscola() {
                           inicial={professor}
                           rotuloSalvar="Salvar alterações"
                           aoSalvar={(dados) => {
-                            editarProfessor(professor.id, dados)
+                            const { emailEnviado } = editarProfessor(professor.id, dados)
+                            setEnviado(emailEnviado ? { email: emailEnviado, onde: 'lista' } : null)
                             setEditandoId(null)
                           }}
                           aoCancelar={() => setEditandoId(null)}
@@ -168,6 +178,9 @@ export default function ProfessoresEscola() {
                         <button className="btn btn-pequeno btn-fantasma" onClick={() => setEditandoId(professor.id)}>
                           <Pencil size={14} aria-hidden /> Editar
                         </button>
+                        {professor.ativo && professor.email && (
+                          <BotaoReenviar tipo="professor" id={professor.id} aoEnviar={(email) => setEnviado({ email, onde: 'lista' })} />
+                        )}
                         {professor.ativo ? (
                           <button className="btn btn-pequeno btn-fantasma" onClick={() => setDesativando(professor)}>
                             <UserX size={14} aria-hidden /> Desativar
@@ -223,7 +236,7 @@ function FormularioProfessor(props: {
     e.preventDefault()
     const limpo = { nome: nome.trim().replace(/\s+/g, ' '), email: email.trim().toLowerCase() }
     if (!limpo.nome) return setErro('Informe o nome do professor.')
-    if (!limpo.email) return setErro('Informe o e-mail: na versão final, é com ele que o professor entra no site.')
+    if (!limpo.email) return setErro('Informe o e-mail: é para ele que vai o link de acesso ao site.')
     if (!EMAIL_VALIDO.test(limpo.email)) return setErro('Esse e-mail não parece válido. Confira.')
     props.aoSalvar(limpo)
   }
@@ -256,6 +269,10 @@ function FormularioProfessor(props: {
           />
         </label>
       </div>
+      {props.inicial && email.trim().toLowerCase() !== props.inicial.email && EMAIL_VALIDO.test(email.trim()) && (
+        <p className="campo-ajuda">Ao salvar, o novo e-mail recebe um link de acesso, e o link enviado antes deixa de valer.</p>
+      )}
+      {!props.inicial && <p className="campo-ajuda">Ao cadastrar, o professor recebe neste e-mail o link de acesso ao site.</p>}
       {erro && <p className="erro-campo">{erro}</p>}
       <div className="form-acoes">
         <button type="submit" className="btn btn-primario">

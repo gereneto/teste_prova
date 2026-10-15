@@ -1,4 +1,5 @@
-import type { Aluno, Avaliacao, Caderno, Coordenador, Db, Id, Lancamento, MembroSolar, Perfil, Professor, Serie, Turma } from '../types'
+import type { Aluno, Avaliacao, Caderno, Colegio, Coordenador, Db, Id, Lancamento, MembroSolar, Perfil, Professor, Serie, Turma } from '../types'
+import { compararChamada } from './alunos'
 import { dataCurta, hojeIso, ordenarTurmas } from './formato'
 
 export const idLancamento = (cadernoId: Id, turmaId: Id) => `${cadernoId}__${turmaId}`
@@ -31,12 +32,15 @@ export function alunosDaTurma(db: Db, turmaId: Id, lancamento?: Lancamento): Alu
       lista.push(aluno)
     }
   }
-  return lista.sort((a, b) => a.numero - b.numero)
+  return lista.sort((a, b) => compararChamada(a.numero, b.numero))
 }
 
-/** Alunos que estão na turma hoje, inclusive os que aguardam a confirmação da coordenação. */
+/** Alunos que estão na turma hoje, na ordem da chamada. */
 export const alunosAtivos = (db: Db, turmaId: Id) =>
-  db.alunos.filter((a) => a.turmaId === turmaId && a.ativo).sort((a, b) => a.numero - b.numero)
+  db.alunos.filter((a) => a.turmaId === turmaId && a.ativo).sort((a, b) => compararChamada(a.numero, b.numero))
+
+/** Alunos que estão na turma hoje, na ordem em que foram cadastrados (a do editor da lista). */
+export const alunosNaOrdemDoCadastro = (db: Db, turmaId: Id) => db.alunos.filter((a) => a.turmaId === turmaId && a.ativo)
 
 export const anoLetivoAtual = (db: Db) => db.config.anoLetivo
 
@@ -147,12 +151,29 @@ export function pessoaDoPerfil(db: Db, perfil: Perfil): Pessoa | null {
   return membro ? { papel: 'solar', nome: membro.nome, membro } : null
 }
 
+/** A pessoa dona do link de acesso; null se o link não vale mais (pessoa removida, desativada ou com e-mail trocado). */
+export function pessoaPorToken(db: Db, token: string): Perfil | null {
+  const professor = db.professores.find((p) => p.token === token && p.ativo)
+  if (professor) return { papel: 'professor', colegioId: professor.colegioId, professorId: professor.id }
+  const coordenador = db.coordenadores.find((c) => c.token === token)
+  if (coordenador) return { papel: 'coordenacao', colegioId: coordenador.colegioId, coordenadorId: coordenador.id }
+  const membro = db.equipeSolar.find((m) => m.token === token)
+  return membro ? { papel: 'solar', membroId: membro.id } : null
+}
+
+export const membroSolarDoColegio = (db: Db, colegio: Colegio): MembroSolar | null =>
+  db.equipeSolar.find((m) => m.id === colegio.membroSolarId) ?? null
+
+/** Quem define o responsável pela coordenação: a pessoa da Solar que cuida do colégio ou a responsável pela equipe Solar. */
+export const podeDefinirResponsavel = (pessoa: Pessoa | null, colegio: Colegio) =>
+  pessoa?.papel === 'solar' && (pessoa.membro.id === colegio.membroSolarId || pessoa.membro.papel === 'responsavel')
+
 export interface Permissoes {
-  /** Colégios, provas, gabaritos e faixas (equipe Solar com edição). */
+  /** Colégios, provas e gabaritos (equipe Solar com edição). */
   editarRede: boolean
   /** Quem da Solar edita e quem só visualiza (só a pessoa responsável). */
   gerirEquipeSolar: boolean
-  /** Turmas, professores, alunos e pedidos do colégio (coordenação). */
+  /** Turmas, professores e alunos do colégio (coordenação). */
   editarColegio: boolean
   /** Quem mais faz parte da coordenação (só a pessoa responsável). */
   gerirEquipeColegio: boolean
@@ -167,8 +188,8 @@ export function permissoesDe(pessoa: Pessoa | null): Permissoes {
   }
 }
 
-export const pedidosPendentes = (db: Db, colegioId?: Id) =>
-  db.pedidos.filter((p) => p.situacao === 'pendente' && (!colegioId || p.colegioId === colegioId))
+/** Mudanças que professores fizeram nas listas de alunos e que a coordenação ainda não viu. */
+export const avisosPendentes = (db: Db, colegioId: Id) => db.historico.filter((e) => e.avisarCoordenacao && !e.ciente && e.colegioId === colegioId)
 
 /** "Aplicação de 05/10 a 09/10 · lançamento até 30/10" */
 export function descreverPeriodo(avaliacao: Avaliacao): string {

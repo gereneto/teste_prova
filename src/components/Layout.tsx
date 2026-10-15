@@ -2,7 +2,7 @@ import { ALargeSmall, LifeBuoy, Repeat } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import logoSolar from '../assets/marca/logo-solar.png'
-import { pedidosPendentes, pessoaDoPerfil, turmasDoProfessor, type Pessoa } from '../lib/consultas'
+import { avisosPendentes, pessoaDoPerfil, turmasDoProfessor, type Pessoa } from '../lib/consultas'
 import { turmaNome } from '../lib/formato'
 import { useDb } from '../store/db'
 import { usePerfil } from '../store/perfil'
@@ -54,9 +54,10 @@ function abasDo(db: Db, perfil: Perfil): Aba[] {
   if (perfil.papel === 'coordenacao') {
     return [
       { para: '/coordenacao', rotulo: 'Início', fim: true },
-      { para: '/coordenacao/pedidos', rotulo: 'Pedidos', contador: pedidosPendentes(db, perfil.colegioId).length },
+      { para: '/coordenacao/avisos', rotulo: 'Avisos', contador: avisosPendentes(db, perfil.colegioId).length },
       { para: '/coordenacao/resultados', rotulo: 'Resultados' },
       { para: '/coordenacao/turmas', rotulo: 'Turmas e alunos' },
+      { para: '/coordenacao/provas', rotulo: 'Provas' },
       { para: '/coordenacao/professores', rotulo: 'Professores' },
       { para: '/coordenacao/equipe', rotulo: 'Equipe' },
     ]

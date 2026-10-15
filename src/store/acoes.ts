@@ -1,9 +1,9 @@
 import type { Draft } from 'immer'
 import { disciplinasDoCaderno, gerarDadosExemplo } from '../data/seed'
+import { textoMudancaAluno, valorDoCampo, type CampoAluno } from '../lib/alunos'
 import { idLancamento, pessoaDoPerfil } from '../lib/consultas'
-import { agoraIso, hojeIso, serieNome, turmaNome } from '../lib/formato'
-import { alunoEmTexto, iniciaisDoNome, normalizarIniciais, pareceNome } from '../lib/iniciais'
-import { NOMES_MOTIVO } from '../lib/pedidos'
+import { agoraIso, hojeIso, primeiroNome, serieNome, turmaNome } from '../lib/formato'
+import { formatarIniciais } from '../lib/iniciais'
 import {
   LETRAS,
   VAZIO,
@@ -12,15 +12,17 @@ import {
   type Colegio,
   type Contato,
   type Db,
+  type Evento,
   type Id,
   type Lancamento,
   type Letra,
   type MotivoSaida,
   type PapelSolar,
-  type Pedido,
   type Questao,
   type Serie,
+  type Sexo,
   type Situacao,
+  type TipoMudancaAluno,
   type Turma,
 } from '../types'
 import { apagarPdf, apagarTodosPdfs, salvarPdf } from './arquivos'
@@ -35,13 +37,25 @@ export function novoId(prefixo: string): Id {
   return `${prefixo}-${sufixo}`
 }
 
-/** Nome de quem está usando o site, para o histórico e para as decisões dos pedidos. */
+const ALFABETO_TOKEN = 'abcdefghijkmnpqrstuvwxyz23456789'
+
+/** Token do link de acesso: 20 caracteres sorteados, difícil de adivinhar. */
+export function novoToken(): string {
+  const bytes = new Uint8Array(20)
+  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) crypto.getRandomValues(bytes)
+  else bytes.forEach((_, i) => (bytes[i] = Math.floor(Math.random() * 256)))
+  return Array.from(bytes, (b) => ALFABETO_TOKEN[b % ALFABETO_TOKEN.length]).join('')
+}
+
+/** Nome de quem está usando o site, para o histórico. */
 export function autorAtual(): string {
   const perfil = getPerfil()
   return (perfil && pessoaDoPerfil(getDb(), perfil)?.nome) ?? 'Alguém'
 }
 
-function registrar(db: Draft<Db>, texto: string, onde: { colegioId?: Id | null; turmaId?: Id | null; cadernoId?: Id | null; avisarTurmas?: boolean } = {}) {
+type Onde = { colegioId?: Id | null; turmaId?: Id | null; cadernoId?: Id | null; avisarTurmas?: boolean }
+
+function registrar(db: Draft<Db>, texto: string, onde: Onde = {}) {
   db.historico.push({
     id: novoId('ev'),
     em: agoraIso(),
@@ -59,17 +73,77 @@ const descreverTurma = (db: Draft<Db>, turmaId: Id) => {
   return turma ? turmaNome(turma) : 'turma'
 }
 const colegioDaTurma = (db: Draft<Db>, turmaId: Id) => db.turmas.find((t) => t.id === turmaId)?.colegioId ?? null
+const nomeDoColegio = (db: Draft<Db>, colegioId: Id) => db.colegios.find((c) => c.id === colegioId)?.nome ?? 'colégio'
+
+// Links de acesso, enviados por e-mail. Nesta versão de teste o envio é simulado: o e-mail fica
+// guardado em db.emails e aparece na página "E-mails enviados".
+
+/** Endereço que entra no site direto na conta da pessoa. Não expira; mudar o e-mail gera outro. */
+export function linkDeAcesso(token: string): string {
+  const base = typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : ''
+  return `${base}#/entrar/${token}`
+}
+
+type MotivoEmail = 'convite' | 'email_corrigido' | 'reenvio'
+
+/** "Envia" o link de acesso e devolve o endereço para onde foi. */
+function enviarLink(db: Draft<Db>, pessoa: { nome: string; email: string; token: string }, papel: string, motivo: MotivoEmail): string {
+  const ola = `Olá, ${primeiroNome(pessoa.nome)}!`
+  const guarde = 'O link é pessoal e não expira: guarde este e-mail e não o encaminhe a ninguém.'
+  const texto = {
+    convite: `${ola} ${autorAtual()} incluiu você na Prova Solar, o site da avaliação anual da Rede Solar, ${papel}. Para entrar, use o link abaixo: você entra direto na sua conta, sem senha. ${guarde}`,
+    email_corrigido: `${ola} O e-mail da sua conta na Prova Solar (${papel}) foi corrigido para este endereço. Use o link abaixo para entrar. O link enviado antes não vale mais. ${guarde}`,
+    reenvio: `${ola} Aqui está de novo o seu link de acesso à Prova Solar, ${papel}. ${guarde}`,
+  }[motivo]
+  db.emails.push({ id: novoId('email'), enviadoEm: agoraIso(), para: pessoa.email, nome: pessoa.nome, assunto: 'Seu acesso à Prova Solar', texto, token: pessoa.token })
+  return pessoa.email
+}
+
+const papelDoCoordenador = (db: Draft<Db>, colegioId: Id, responsavel: boolean) =>
+  `${responsavel ? 'como responsável pela coordenação' : 'na coordenação'} do ${nomeDoColegio(db, colegioId)}`
+const papelDoProfessor = (db: Draft<Db>, colegioId: Id) => `como professor(a) do ${nomeDoColegio(db, colegioId)}`
+const papelSolar = (papel: PapelSolar) =>
+  `na equipe Solar, ${papel === 'responsavel' ? 'como pessoa responsável' : papel === 'edicao' ? 'com permissão de edição' : 'com permissão só de visualização'}`
+
+/** Manda de novo o mesmo link (o antigo continua valendo). Devolve o e-mail de destino. */
+export function reenviarLink(tipo: 'professor' | 'coordenador' | 'solar', id: Id): string | null {
+  let enviado: string | null = null
+  atualizar((db) => {
+    if (tipo === 'professor') {
+      const p = db.professores.find((x) => x.id === id)
+      if (p) enviado = enviarLink(db, p, papelDoProfessor(db, p.colegioId), 'reenvio')
+    } else if (tipo === 'coordenador') {
+      const c = db.coordenadores.find((x) => x.id === id)
+      if (c) enviado = enviarLink(db, c, papelDoCoordenador(db, c.colegioId, c.responsavel), 'reenvio')
+    } else {
+      const m = db.equipeSolar.find((x) => x.id === id)
+      if (m) enviado = enviarLink(db, m, papelSolar(m.papel), 'reenvio')
+    }
+  })
+  return enviado
+}
+
+/** Resultado das ações que cadastram ou mudam uma pessoa: para onde foi o e-mail com o link, se foi. */
+export interface Envio {
+  emailEnviado: string | null
+}
 
 // Colégios e coordenação
 
-export type DadosColegio = Omit<Colegio, 'id'>
+export type DadosColegio = Pick<Colegio, 'nome' | 'cidade' | 'uf'>
 
 export function criarColegio(dados: DadosColegio, responsavel: Contato | null): Id {
   const id = novoId('col')
+  const perfil = getPerfil()
   atualizar((db) => {
-    db.colegios.push({ id, ...dados })
-    if (responsavel?.nome) db.coordenadores.push({ id: novoId('coord'), colegioId: id, ...responsavel, responsavel: true })
-    registrar(db, `Cadastrou o ${dados.nome}${responsavel?.nome ? `, com ${responsavel.nome} como responsável pela coordenação` : ''}.`, { colegioId: id })
+    db.colegios.push({ id, ...dados, membroSolarId: perfil?.papel === 'solar' ? perfil.membroId : null })
+    registrar(db, `Cadastrou o ${dados.nome}.`, { colegioId: id })
+    if (responsavel?.nome) {
+      const pessoa = { id: novoId('coord'), colegioId: id, ...responsavel, responsavel: true, token: novoToken() }
+      db.coordenadores.push(pessoa)
+      enviarLink(db, pessoa, papelDoCoordenador(db, id, true), 'convite')
+      registrar(db, `Definiu ${responsavel.nome} como responsável pela coordenação e enviou o link de acesso para ${responsavel.email}.`, { colegioId: id })
+    }
   })
   return id
 }
@@ -81,30 +155,65 @@ export function editarColegio(id: Id, dados: DadosColegio) {
   })
 }
 
-/** A Solar define quem responde pela coordenação. Quem era responsável continua na equipe, sem o papel. */
-export function definirResponsavelDoColegio(colegioId: Id, contato: Contato) {
+/** A pessoa responsável pela equipe Solar escolhe quem da Solar cuida de cada colégio. */
+export function definirMembroSolarDoColegio(colegioId: Id, membroId: Id | null) {
+  atualizar((db) => {
+    const colegio = db.colegios.find((c) => c.id === colegioId)
+    if (!colegio) return
+    colegio.membroSolarId = membroId
+    const nome = db.equipeSolar.find((m) => m.id === membroId)?.nome
+    registrar(db, nome ? `${nome} passou a cuidar do ${colegio.nome} pela Solar.` : `O ${colegio.nome} ficou sem ninguém da Solar cuidando dele.`, { colegioId })
+  })
+}
+
+/**
+ * Define quem responde pela coordenação. Quem era responsável continua na equipe, sem o papel.
+ * Se a pessoa é nova, recebe por e-mail o link de acesso.
+ */
+export function definirResponsavelDoColegio(colegioId: Id, contato: Contato): Envio {
+  let emailEnviado: string | null = null
   atualizar((db) => {
     const equipe = db.coordenadores.filter((c) => c.colegioId === colegioId)
     equipe.forEach((c) => (c.responsavel = false))
     const existente = equipe.find((c) => contato.email && c.email.toLowerCase() === contato.email.toLowerCase())
-    if (existente) Object.assign(existente, contato, { responsavel: true })
-    else db.coordenadores.push({ id: novoId('coord'), colegioId, ...contato, responsavel: true })
-    registrar(db, `Definiu ${contato.nome} como responsável pela coordenação.`, { colegioId })
+    if (existente) {
+      Object.assign(existente, { nome: contato.nome, telefone: contato.telefone, responsavel: true })
+    } else {
+      const pessoa = { id: novoId('coord'), colegioId, ...contato, responsavel: true, token: novoToken() }
+      db.coordenadores.push(pessoa)
+      emailEnviado = enviarLink(db, pessoa, papelDoCoordenador(db, colegioId, true), 'convite')
+    }
+    registrar(db, `Definiu ${contato.nome} como responsável pela coordenação${emailEnviado ? ` e enviou o link de acesso para ${emailEnviado}` : ''}.`, { colegioId })
   })
+  return { emailEnviado }
 }
 
-export function adicionarCoordenador(colegioId: Id, contato: Contato) {
+export function adicionarCoordenador(colegioId: Id, contato: Contato): Envio {
+  let emailEnviado: string | null = null
   atualizar((db) => {
-    db.coordenadores.push({ id: novoId('coord'), colegioId, ...contato, responsavel: false })
-    registrar(db, `Incluiu ${contato.nome} na equipe da coordenação.`, { colegioId })
+    const pessoa = { id: novoId('coord'), colegioId, ...contato, responsavel: false, token: novoToken() }
+    db.coordenadores.push(pessoa)
+    emailEnviado = enviarLink(db, pessoa, papelDoCoordenador(db, colegioId, false), 'convite')
+    registrar(db, `Incluiu ${contato.nome} na equipe da coordenação e enviou o link de acesso para ${contato.email}.`, { colegioId })
   })
+  return { emailEnviado }
 }
 
-export function editarCoordenador(id: Id, contato: Contato) {
+/** Corrigir o e-mail gera um link novo, que vai para o endereço novo; o antigo deixa de valer. */
+export function editarCoordenador(id: Id, contato: Contato): Envio {
+  let emailEnviado: string | null = null
   atualizar((db) => {
     const pessoa = db.coordenadores.find((c) => c.id === id)
-    if (pessoa) Object.assign(pessoa, contato)
+    if (!pessoa) return
+    const mudouEmail = pessoa.email.toLowerCase() !== contato.email.toLowerCase()
+    Object.assign(pessoa, contato)
+    if (mudouEmail) {
+      pessoa.token = novoToken()
+      emailEnviado = enviarLink(db, pessoa, papelDoCoordenador(db, pessoa.colegioId, pessoa.responsavel), 'email_corrigido')
+      registrar(db, `Corrigiu o e-mail de ${pessoa.nome} e enviou um novo link de acesso.`, { colegioId: pessoa.colegioId })
+    }
   })
+  return { emailEnviado }
 }
 
 export function removerCoordenador(id: Id) {
@@ -128,18 +237,31 @@ export function passarResponsabilidade(novoResponsavelId: Id) {
 
 // Equipe Solar
 
-export function adicionarMembroSolar(contato: Contato, papel: Exclude<PapelSolar, 'responsavel'>) {
+export function adicionarMembroSolar(contato: Contato, papel: Exclude<PapelSolar, 'responsavel'>): Envio {
+  let emailEnviado: string | null = null
   atualizar((db) => {
-    db.equipeSolar.push({ id: novoId('solar'), ...contato, papel })
+    const membro = { id: novoId('solar'), ...contato, papel, token: novoToken() }
+    db.equipeSolar.push(membro)
+    emailEnviado = enviarLink(db, membro, papelSolar(papel), 'convite')
     registrar(db, `Incluiu ${contato.nome} na equipe Solar, com ${papel === 'edicao' ? 'permissão de edição' : 'permissão só de visualização'}.`)
   })
+  return { emailEnviado }
 }
 
-export function editarMembroSolar(id: Id, contato: Contato) {
+export function editarMembroSolar(id: Id, contato: Contato): Envio {
+  let emailEnviado: string | null = null
   atualizar((db) => {
     const membro = db.equipeSolar.find((m) => m.id === id)
-    if (membro) Object.assign(membro, contato)
+    if (!membro) return
+    const mudouEmail = membro.email.toLowerCase() !== contato.email.toLowerCase()
+    Object.assign(membro, contato)
+    if (mudouEmail) {
+      membro.token = novoToken()
+      emailEnviado = enviarLink(db, membro, papelSolar(membro.papel), 'email_corrigido')
+      registrar(db, `Corrigiu o e-mail de ${membro.nome} e enviou um novo link de acesso.`)
+    }
   })
+  return { emailEnviado }
 }
 
 export function mudarPapelSolar(id: Id, papel: Exclude<PapelSolar, 'responsavel'>) {
@@ -147,6 +269,8 @@ export function mudarPapelSolar(id: Id, papel: Exclude<PapelSolar, 'responsavel'
     const membro = db.equipeSolar.find((m) => m.id === id)
     if (!membro || membro.papel === 'responsavel') return
     membro.papel = papel
+    // Quem só visualiza não cuida de colégio.
+    if (papel === 'visualizacao') for (const c of db.colegios) if (c.membroSolarId === id) c.membroSolarId = null
     registrar(db, `${membro.nome} passou a ter ${papel === 'edicao' ? 'permissão de edição' : 'permissão só de visualização'}.`)
   })
 }
@@ -156,6 +280,7 @@ export function removerMembroSolar(id: Id) {
     const membro = db.equipeSolar.find((m) => m.id === id)
     if (!membro || membro.papel === 'responsavel') return
     db.equipeSolar = db.equipeSolar.filter((m) => m.id !== id)
+    for (const c of db.colegios) if (c.membroSolarId === id) c.membroSolarId = null
     registrar(db, `Tirou ${membro.nome} da equipe Solar.`)
   })
 }
@@ -175,20 +300,33 @@ export function passarResponsabilidadeSolar(id: Id) {
 
 // Professores
 
-export function criarProfessor(colegioId: Id, dados: { nome: string; email: string }): Id {
+/** Cadastra o professor e manda para o e-mail dele o link de acesso. */
+export function criarProfessor(colegioId: Id, dados: { nome: string; email: string }): Envio & { id: Id } {
   const id = novoId('prof')
+  let emailEnviado: string | null = null
   atualizar((db) => {
-    db.professores.push({ id, colegioId, ...dados, ativo: true })
-    registrar(db, `Cadastrou ${dados.nome} como professor(a).`, { colegioId })
+    const professor = { id, colegioId, ...dados, ativo: true, token: novoToken() }
+    db.professores.push(professor)
+    emailEnviado = enviarLink(db, professor, papelDoProfessor(db, colegioId), 'convite')
+    registrar(db, `Cadastrou ${dados.nome} como professor(a) e enviou o link de acesso para ${dados.email}.`, { colegioId })
   })
-  return id
+  return { id, emailEnviado }
 }
 
-export function editarProfessor(id: Id, dados: { nome: string; email: string }) {
+export function editarProfessor(id: Id, dados: { nome: string; email: string }): Envio {
+  let emailEnviado: string | null = null
   atualizar((db) => {
     const professor = db.professores.find((p) => p.id === id)
-    if (professor) Object.assign(professor, dados)
+    if (!professor) return
+    const mudouEmail = professor.email.toLowerCase() !== dados.email.toLowerCase()
+    Object.assign(professor, dados)
+    if (mudouEmail) {
+      professor.token = novoToken()
+      emailEnviado = enviarLink(db, professor, papelDoProfessor(db, professor.colegioId), 'email_corrigido')
+      registrar(db, `Corrigiu o e-mail de ${professor.nome} e enviou um novo link de acesso.`, { colegioId: professor.colegioId })
+    }
   })
+  return { emailEnviado }
 }
 
 /** Quem sai do colégio perde o acesso e sai das turmas do ano, mas o nome continua no histórico. */
@@ -253,173 +391,127 @@ export function removerTurma(id: Id) {
     db.turmas = db.turmas.filter((t) => t.id !== id)
     db.alunos = db.alunos.filter((a) => a.turmaId !== id)
     db.lancamentos = db.lancamentos.filter((l) => l.turmaId !== id)
-    db.pedidos = db.pedidos.filter((p) => p.turmaId !== id)
   })
 }
 
-// Alunos
-
-const ANO_MINIMO_INGRESSO = 1990
-
-export interface LinhaLida {
-  /** A linha como foi colada; aparece só na tela de conferência e não é salva. */
-  original: string
-  nome: string
-  numero: number | null
-  anoIngresso: number | null
-}
-
-/** "A.C.S.", "A. C. S." ou "ACS": a pessoa já colou as iniciais, não o nome. */
-const jaSaoIniciais = (texto: string) => /^\p{L}(\.\s?\p{L})+\.?$/u.test(texto.trim()) || /^[A-Z]{2,5}$/.test(texto.trim())
-
-/**
- * Lê alunos colados de uma planilha ou lista: um por linha, com o número de chamada opcional na
- * primeira coluna ("7;Maria Souza") ou no começo ("7. Maria Souza") e o ano de entrada no colégio
- * opcional em outra coluna ("Maria Souza;2023") ou no fim ("Maria Souza 2023"). Ignora cabeçalhos.
- */
-export function lerListaDeAlunos(texto: string, anoMaximo: number): LinhaLida[] {
-  const ehAno = (valor: string) => /^\d{4}$/.test(valor) && Number(valor) >= ANO_MINIMO_INGRESSO && Number(valor) <= anoMaximo + 1
-  const linhas: LinhaLida[] = []
-  for (const original of texto.split(/\r?\n/)) {
-    const celulas = original.split(/\t|;/).map((c) => c.trim())
-    const celulaNumero = celulas.find((c) => /^\d{1,3}$/.test(c))
-    const celulaAno = celulas.find(ehAno)
-    let celulaNome = celulas.find((c) => /\p{L}/u.test(c)) ?? ''
-    let numero = celulaNumero ? Number(celulaNumero) : null
-    let anoIngresso = celulaAno ? Number(celulaAno) : null
-    const anoNoFim = celulaNome.match(/\s(\d{4})$/)
-    if (anoNoFim && ehAno(anoNoFim[1])) {
-      anoIngresso ??= Number(anoNoFim[1])
-      celulaNome = celulaNome.slice(0, anoNoFim.index)
-    }
-    const numeroNoComeco = celulaNome.match(/^(\d{1,3})\s*[.)\-–]?\s+/)
-    if (numeroNoComeco) {
-      numero ??= Number(numeroNoComeco[1])
-      celulaNome = celulaNome.slice(numeroNoComeco[0].length)
-    }
-    const nome = celulaNome.replace(/\s+/g, ' ').trim()
-    if (nome && !/^(nome|aluno|aluna|nome do aluno|estudante|iniciais)s?$/i.test(nome)) {
-      linhas.push({ original: original.trim(), nome, numero: numero && numero > 0 ? numero : null, anoIngresso })
-    }
-  }
-  return linhas
-}
+// Alunos. A lista é editada pela coordenação e pelos professores da turma. As mudanças feitas por
+// professores viram avisos para a coordenação, que marca que está ciente (e corrige, se quiser).
 
 export interface DadosAluno {
+  numero: string
   iniciais: string
-  numero: number
+  sexo: Sexo | null
   anoIngresso: number | null
 }
 
-export interface LinhaConferida extends DadosAluno {
-  original: string
-  /** Impede o cadastro: número repetido ou iniciais que não deu para tirar do nome. */
-  problema: string | null
-  /** Só um aviso: outro aluno da turma tem as mesmas iniciais. */
-  iniciaisRepetidas: boolean
-}
-
-/** Números já usados na turma: alunos que estão nela e quem já tem prova lançada com aquele número. */
-export function numerosUsados(db: Db, turmaId: Id, ignorarAlunoId?: Id): Map<number, Aluno> {
-  const usados = new Map<number, Aluno>()
-  for (const aluno of db.alunos) {
-    if (aluno.id !== ignorarAlunoId && aluno.turmaId === turmaId && aluno.ativo) usados.set(aluno.numero, aluno)
-  }
-  for (const lancamento of db.lancamentos) {
-    if (lancamento.turmaId !== turmaId) continue
-    for (const [alunoId, resposta] of Object.entries(lancamento.respostas)) {
-      if (alunoId === ignorarAlunoId || resposta.numero == null || usados.has(resposta.numero)) continue
-      const aluno = db.alunos.find((a) => a.id === alunoId)
-      if (aluno) usados.set(resposta.numero, aluno)
-    }
-  }
-  return usados
-}
-
-export const proximoNumero = (db: Db, turmaId: Id) => Math.max(0, ...numerosUsados(db, turmaId).keys()) + 1
+const limpar = (dados: Partial<DadosAluno>): Partial<DadosAluno> => ({
+  ...dados,
+  ...(dados.numero !== undefined ? { numero: dados.numero.trim().replace(/\s+/g, ' ') } : {}),
+  ...(dados.iniciais !== undefined ? { iniciais: formatarIniciais(dados.iniciais) } : {}),
+})
 
 /**
- * Converte a lista colada no que vai ser salvo: iniciais, número e ano de entrada. Quem vem sem número
- * recebe o próximo livre, na ordem da lista.
+ * Registra uma mudança num aluno. As várias mudanças que a mesma pessoa faz no mesmo aluno, no mesmo
+ * dia, viram uma linha só (e um aviso só para a coordenação, enquanto ela não marca que está ciente).
  */
-export function conferirLista(db: Db, turmaId: Id, lidas: LinhaLida[], anoPadrao: number | null): LinhaConferida[] {
-  const usados = numerosUsados(db, turmaId)
-  const naLista = new Map<number, number>()
-  for (const l of lidas) if (l.numero != null) naLista.set(l.numero, (naLista.get(l.numero) ?? 0) + 1)
-  let proximo = Math.max(0, ...usados.keys(), ...naLista.keys())
-  const linhas = lidas.map((l): LinhaConferida => {
-    const iniciais = jaSaoIniciais(l.nome) ? (normalizarIniciais(l.nome) ?? '') : iniciaisDoNome(l.nome)
-    const numero = l.numero ?? ++proximo
-    let problema: string | null = null
-    if (!iniciais) problema = 'Não deu para tirar as iniciais deste nome.'
-    else if (l.numero != null && usados.has(l.numero)) problema = `O nº ${l.numero} já é de ${usados.get(l.numero)!.iniciais}`
-    else if (l.numero != null && naLista.get(l.numero)! > 1) problema = `O nº ${l.numero} aparece mais de uma vez na lista.`
-    return { original: l.original, iniciais, numero, anoIngresso: l.anoIngresso ?? anoPadrao, problema, iniciaisRepetidas: false }
+function registrarMudancaAluno(
+  db: Draft<Db>,
+  aluno: Draft<Aluno>,
+  tipo: TipoMudancaAluno,
+  extra: { campos?: Evento['campos']; motivo?: MotivoSaida; texto?: string } = {},
+) {
+  const deProfessor = getPerfil()?.papel === 'professor'
+  const por = autorAtual()
+  const hoje = hojeIso()
+  // Incluiu e excluiu no mesmo dia, antes de a coordenação ver: foi engano de digitação, nada a avisar.
+  const doDia = (e: Evento) => e.alunoId === aluno.id && e.por === por && e.em.startsWith(hoje) && !e.ciente
+  if (tipo === 'exclusao' && db.historico.some((e) => doDia(e) && e.tipo === 'inclusao')) {
+    db.historico = db.historico.filter((e) => !doDia(e))
+    return
+  }
+  const anterior = [...db.historico]
+    .reverse()
+    .find(
+      (e) =>
+        e.alunoId === aluno.id &&
+        e.por === por &&
+        e.em.startsWith(hoje) &&
+        !e.ciente &&
+        (e.tipo === tipo || (e.tipo === 'inclusao' && tipo === 'correcao')),
+    )
+  if (anterior && tipo === 'correcao' && anterior.tipo === 'correcao') {
+    const campos = { ...anterior.campos }
+    for (const [campo, mudanca] of Object.entries(extra.campos ?? {})) {
+      const de = campos[campo]?.de ?? mudanca.de
+      if (de === mudanca.para) delete campos[campo]
+      else campos[campo] = { de, para: mudanca.para }
+    }
+    if (!Object.keys(campos).length) {
+      db.historico = db.historico.filter((e) => e.id !== anterior.id)
+      return
+    }
+    anterior.campos = campos
+    anterior.texto = textoMudancaAluno('correcao', aluno, { campos })
+    anterior.em = agoraIso()
+    return
+  }
+  if (anterior && anterior.tipo === 'inclusao' && (tipo === 'correcao' || tipo === 'inclusao')) {
+    anterior.texto = textoMudancaAluno('inclusao', aluno)
+    anterior.em = agoraIso()
+    return
+  }
+  db.historico.push({
+    id: novoId('ev'),
+    em: agoraIso(),
+    por,
+    colegioId: colegioDaTurma(db, aluno.turmaId),
+    turmaId: aluno.turmaId,
+    cadernoId: null,
+    texto: textoMudancaAluno(tipo, aluno, extra),
+    alunoId: aluno.id,
+    tipo,
+    ...(extra.campos ? { campos: extra.campos } : {}),
+    ...(deProfessor ? { avisarCoordenacao: true } : {}),
   })
-  const contagem = new Map<string, number>()
-  for (const iniciais of [...[...usados.values()].map((a) => a.iniciais), ...linhas.map((l) => l.iniciais)]) contagem.set(iniciais, (contagem.get(iniciais) ?? 0) + 1)
-  for (const linha of linhas) linha.iniciaisRepetidas = (contagem.get(linha.iniciais) ?? 0) > 1
-  return linhas
 }
 
-/** Confere iniciais digitadas à mão. Devolve o texto do erro, ou null se estiver tudo certo. */
-export function validarIniciais(texto: string): string | null {
-  if (pareceNome(texto)) return 'Digite só as iniciais, como A.C.S. O site não guarda o nome completo.'
-  if (!normalizarIniciais(texto)) return 'Use só letras, como A.C.S. (de 1 a 6 letras).'
-  return null
-}
-
-export function adicionarAlunos(turmaId: Id, novos: DadosAluno[]) {
+/** Cria o aluno com o id dado (a linha nova do editor já nasce com ele, para não perder o foco). */
+export function criarAluno(turmaId: Id, id: Id, dados: Partial<DadosAluno>) {
   atualizar((db) => {
-    for (const dados of novos) db.alunos.push({ id: novoId('alu'), turmaId, ...dados, ativo: true })
-    registrar(db, `Incluiu ${novos.length === 1 ? `o ${alunoEmTexto(novos[0])}` : `${novos.length} alunos`} na lista.`, {
-      colegioId: colegioDaTurma(db, turmaId),
-      turmaId,
-    })
+    if (db.alunos.some((a) => a.id === id)) return
+    const aluno: Aluno = { id, turmaId, numero: '', iniciais: '', sexo: null, anoIngresso: null, ativo: true, ...limpar(dados) }
+    db.alunos.push(aluno)
+    registrarMudancaAluno(db, db.alunos.at(-1)!, 'inclusao')
   })
 }
 
-function descreverMudancas(antes: DadosAluno, depois: DadosAluno): string[] {
-  const mudancas: string[] = []
-  if (antes.numero !== depois.numero) mudancas.push(`número de ${antes.numero} para ${depois.numero}`)
-  if (antes.iniciais !== depois.iniciais) mudancas.push(`iniciais de ${antes.iniciais} para ${depois.iniciais}`)
-  if (antes.anoIngresso !== depois.anoIngresso) mudancas.push(`ano de entrada de ${antes.anoIngresso ?? 'não informado'} para ${depois.anoIngresso ?? 'não informado'}`)
-  return mudancas
-}
-
-export function editarAluno(id: Id, dados: DadosAluno) {
+/** Muda um ou mais campos do aluno. Campo vazio é permitido: o site lembra depois que falta. */
+export function atualizarAluno(id: Id, dados: Partial<DadosAluno>) {
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno) return
-    const mudancas = descreverMudancas(aluno, dados)
-    Object.assign(aluno, dados)
-    if (mudancas.length) registrar(db, `Corrigiu o ${alunoEmTexto(aluno)}: ${mudancas.join(', ')}.`, { colegioId: colegioDaTurma(db, aluno.turmaId), turmaId: aluno.turmaId })
+    const novos = limpar(dados)
+    const campos: NonNullable<Evento['campos']> = {}
+    for (const campo of Object.keys(novos) as CampoAluno[]) {
+      const de = valorDoCampo(aluno, campo)
+      const para = valorDoCampo({ ...aluno, ...novos }, campo)
+      if (de !== para) campos[campo] = { de, para }
+    }
+    if (!Object.keys(campos).length) return
+    Object.assign(aluno, novos)
+    registrarMudancaAluno(db, aluno, 'correcao', { campos })
   })
 }
 
 /** Preenche o ano de entrada de todos os alunos ativos da turma que ainda estão sem ele. */
 export function definirIngressoDosSemAno(turmaId: Id, anoIngresso: number) {
   atualizar((db) => {
-    let quantos = 0
     for (const aluno of db.alunos) {
       if (aluno.turmaId === turmaId && aluno.ativo && aluno.anoIngresso == null) {
         aluno.anoIngresso = anoIngresso
-        quantos++
+        registrarMudancaAluno(db, aluno, 'correcao', { campos: { anoIngresso: { de: 'em branco', para: String(anoIngresso) } } })
       }
     }
-    registrar(db, `Preencheu o ano de entrada (${anoIngresso}) de ${quantos === 1 ? '1 aluno' : `${quantos} alunos`} que estavam sem ele.`, {
-      colegioId: colegioDaTurma(db, turmaId),
-      turmaId,
-    })
-  })
-}
-
-function saida(db: Draft<Db>, aluno: Draft<Aluno>, motivo: MotivoSaida) {
-  aluno.ativo = false
-  aluno.saida = { em: hojeIso(), motivo }
-  registrar(db, `Registrou a saída do ${alunoEmTexto(aluno)}: ${NOMES_MOTIVO[motivo].toLowerCase()}.`, {
-    colegioId: colegioDaTurma(db, aluno.turmaId),
-    turmaId: aluno.turmaId,
   })
 }
 
@@ -427,7 +519,10 @@ function saida(db: Draft<Db>, aluno: Draft<Aluno>, motivo: MotivoSaida) {
 export function registrarSaida(id: Id, motivo: MotivoSaida) {
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
-    if (aluno) saida(db, aluno, motivo)
+    if (!aluno) return
+    aluno.ativo = false
+    aluno.saida = { em: hojeIso(), motivo }
+    registrarMudancaAluno(db, aluno, 'saida', { motivo })
   })
 }
 
@@ -439,145 +534,39 @@ export function excluirCadastroDoAluno(id: Id) {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno || db.lancamentos.some((l) => l.respostas[id])) return
     db.alunos = db.alunos.filter((a) => a.id !== id)
-    db.pedidos = db.pedidos.filter((p) => p.alunoId !== id || p.situacao !== 'pendente')
-    registrar(db, `Excluiu o cadastro do ${alunoEmTexto(aluno)}, feito por engano.`, { colegioId: colegioDaTurma(db, aluno.turmaId), turmaId: aluno.turmaId })
+    registrarMudancaAluno(db, aluno, 'exclusao')
   })
 }
 
-/** O aluno volta com o número que tinha; se outro aluno já estiver com ele, recebe o próximo livre. Devolve o número. */
-export function reativarAluno(id: Id): number | null {
-  const db = getDb()
-  const aluno = db.alunos.find((a) => a.id === id)
-  if (!aluno) return null
-  const usados = numerosUsados(db, aluno.turmaId, aluno.id)
-  const numero = usados.has(aluno.numero) ? Math.max(0, ...usados.keys()) + 1 : aluno.numero
-  atualizar((rascunho) => {
-    const a = rascunho.alunos.find((x) => x.id === id)!
-    a.ativo = true
-    a.numero = numero
-    delete a.saida
-    registrar(rascunho, `O ${alunoEmTexto(a)} voltou para a lista da turma.`, { colegioId: colegioDaTurma(rascunho, a.turmaId), turmaId: a.turmaId })
-  })
-  return numero
-}
-
-/** As respostas já lançadas ficam na turma antiga; na nova, o aluno recebe o próximo número livre. Devolve o número. */
-export function mudarDeTurma(id: Id, novaTurmaId: Id): number | null {
-  const db = getDb()
-  const aluno = db.alunos.find((a) => a.id === id)
-  if (!aluno || aluno.turmaId === novaTurmaId) return null
-  const numero = proximoNumero(db, novaTurmaId)
-  atualizar((rascunho) => {
-    const a = rascunho.alunos.find((x) => x.id === id)!
-    const antiga = a.turmaId
-    const texto = `Mudou o ${alunoEmTexto(a)} do ${descreverTurma(rascunho, antiga)} para o ${descreverTurma(rascunho, novaTurmaId)}, onde ficou com o nº ${numero}.`
-    a.turmaId = novaTurmaId
-    a.numero = numero
-    registrar(rascunho, texto, { colegioId: colegioDaTurma(rascunho, antiga), turmaId: antiga })
-    registrar(rascunho, texto, { colegioId: colegioDaTurma(rascunho, novaTurmaId), turmaId: novaTurmaId })
-  })
-  return numero
-}
-
-// Pedidos dos professores à coordenação
-
-function professorAtualId(): Id | null {
-  const perfil = getPerfil()
-  return perfil?.papel === 'professor' ? perfil.professorId : null
-}
-
-function novoPedido(db: Draft<Db>, tipo: Pedido['tipo'], turmaId: Id, alunoId: Id, extra: Partial<Pedido>) {
-  db.pedidos.push({
-    id: novoId('ped'),
-    tipo,
-    colegioId: colegioDaTurma(db, turmaId) ?? '',
-    turmaId,
-    alunoId,
-    professorId: professorAtualId() ?? '',
-    criadoEm: agoraIso(),
-    situacao: 'pendente',
-    ...extra,
-  })
-}
-
-/** O aluno entra na hora, como pendente: o professor já pode lançar a prova dele. Devolve o id do aluno. */
-export function pedirInclusao(turmaId: Id, dados: DadosAluno): Id {
-  const alunoId = novoId('alu')
+export function reativarAluno(id: Id) {
   atualizar((db) => {
-    db.alunos.push({ id: alunoId, turmaId, ...dados, ativo: true, pendente: true })
-    novoPedido(db, 'incluir', turmaId, alunoId, { ...dados })
+    const aluno = db.alunos.find((a) => a.id === id)
+    if (!aluno) return
+    aluno.ativo = true
+    delete aluno.saida
+    registrarMudancaAluno(db, aluno, 'volta')
   })
-  return alunoId
 }
 
-export function pedirSaida(alunoId: Id, motivoSaida: MotivoSaida) {
+/** As respostas já lançadas ficam na turma antiga; na nova, o aluno continua com o mesmo número (confira se não repete). */
+export function mudarDeTurma(id: Id, novaTurmaId: Id) {
   atualizar((db) => {
-    const aluno = db.alunos.find((a) => a.id === alunoId)
-    if (aluno) novoPedido(db, 'saida', aluno.turmaId, alunoId, { motivoSaida })
+    const aluno = db.alunos.find((a) => a.id === id)
+    if (!aluno || aluno.turmaId === novaTurmaId) return
+    const antiga = aluno.turmaId
+    const texto = `Mudou o aluno ${aluno.iniciais || aluno.numero} do ${descreverTurma(db, antiga)} para o ${descreverTurma(db, novaTurmaId)}.`
+    aluno.turmaId = novaTurmaId
+    registrar(db, texto, { colegioId: colegioDaTurma(db, antiga), turmaId: antiga })
+    registrar(db, texto, { colegioId: colegioDaTurma(db, novaTurmaId), turmaId: novaTurmaId })
   })
 }
 
-export function pedirCorrecao(alunoId: Id, dados: DadosAluno) {
+/** A coordenação marca que viu as mudanças feitas pelos professores. */
+export function marcarCiente(ids: Id[]) {
   atualizar((db) => {
-    const aluno = db.alunos.find((a) => a.id === alunoId)
-    if (aluno) novoPedido(db, 'correcao', aluno.turmaId, alunoId, { ...dados })
-  })
-}
-
-function apagarAlunoPendente(db: Draft<Db>, alunoId: Id) {
-  db.alunos = db.alunos.filter((a) => a.id !== alunoId)
-  for (const lancamento of db.lancamentos) delete lancamento.respostas[alunoId]
-}
-
-export function cancelarPedido(id: Id) {
-  atualizar((db) => {
-    const pedido = db.pedidos.find((p) => p.id === id)
-    if (!pedido || pedido.situacao !== 'pendente') return
-    pedido.situacao = 'cancelado'
-    if (pedido.tipo === 'incluir') apagarAlunoPendente(db, pedido.alunoId)
-  })
-}
-
-/** Aplica o pedido. Devolve o texto do erro se não for possível (número já usado por outro aluno). */
-export function aprovarPedido(id: Id): string | null {
-  const db = getDb()
-  const pedido = db.pedidos.find((p) => p.id === id)
-  if (!pedido || pedido.situacao !== 'pendente') return null
-  const aluno = db.alunos.find((a) => a.id === pedido.alunoId)
-  if (!aluno) return 'Este aluno não está mais na lista.'
-  if (pedido.tipo !== 'saida' && pedido.numero != null) {
-    const outro = numerosUsados(db, pedido.turmaId, aluno.id).get(pedido.numero)
-    if (outro) return `O nº ${pedido.numero} já é de ${outro.iniciais} Recuse o pedido ou corrija o número na lista da turma antes de aprovar.`
-  }
-  const professor = db.professores.find((p) => p.id === pedido.professorId)?.nome ?? 'professor(a)'
-  atualizar((rascunho) => {
-    const p = rascunho.pedidos.find((x) => x.id === id)!
-    const a = rascunho.alunos.find((x) => x.id === p.alunoId)!
-    p.situacao = 'aprovado'
-    p.decisao = { por: autorAtual(), em: agoraIso() }
-    const onde = { colegioId: p.colegioId, turmaId: p.turmaId }
-    if (p.tipo === 'incluir') {
-      delete a.pendente
-      registrar(rascunho, `Aprovou a inclusão do ${alunoEmTexto(a)}, pedida por ${professor}.`, onde)
-    } else if (p.tipo === 'saida') {
-      saida(rascunho, a, p.motivoSaida ?? 'outro')
-    } else {
-      const novos = { iniciais: p.iniciais ?? a.iniciais, numero: p.numero ?? a.numero, anoIngresso: p.anoIngresso === undefined ? a.anoIngresso : p.anoIngresso }
-      const mudancas = descreverMudancas(a, novos)
-      Object.assign(a, novos)
-      registrar(rascunho, `Corrigiu o ${alunoEmTexto(a)} a pedido de ${professor}: ${mudancas.join(', ') || 'sem mudanças'}.`, onde)
-    }
-  })
-  return null
-}
-
-export function recusarPedido(id: Id, motivo: string) {
-  atualizar((db) => {
-    const pedido = db.pedidos.find((p) => p.id === id)
-    if (!pedido || pedido.situacao !== 'pendente') return
-    pedido.situacao = 'recusado'
-    pedido.decisao = { por: autorAtual(), em: agoraIso(), motivo }
-    if (pedido.tipo === 'incluir') apagarAlunoPendente(db, pedido.alunoId)
+    const por = autorAtual()
+    const em = agoraIso()
+    for (const evento of db.historico) if (ids.includes(evento.id) && !evento.ciente) evento.ciente = { por, em }
   })
 }
 
@@ -591,7 +580,7 @@ function cadernoEmBranco(avaliacaoId: Id, serie: Serie): Caderno {
     avaliacaoId,
     serie,
     numAlternativas: 4,
-    usaFolhaRespostas: serie >= 3,
+    usaFolhaRespostas: serie === 5,
     questoes: disciplinasDoCaderno(serie).map((disciplina) => ({ gabarito: null, disciplina, habilidade: null, anulada: false })),
     pdf: null,
     conferencia: null,
@@ -803,13 +792,6 @@ export function concluirLancamento(cadernoId: Id, turmaId: Id) {
 }
 
 // Configurações e dados
-
-export function definirFaixas(faixas: [number, number, number]) {
-  atualizar((db) => {
-    db.config.faixas = faixas
-    registrar(db, `Mudou as faixas de desempenho para Básico a partir de ${faixas[0]}%, Adequado a partir de ${faixas[1]}% e Avançado a partir de ${faixas[2]}%.`)
-  })
-}
 
 export async function restaurarDadosDeExemplo() {
   substituirDados(gerarDadosExemplo())

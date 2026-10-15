@@ -68,10 +68,13 @@
   --texto-2: #6b5b56; /* texto secundário: o cinza da marca não tem contraste suficiente em letra pequena */
   --borda-campo: rgba(94, 18, 22, 0.24); /* contorno de campos, um pouco mais visível que a areia */
   --trilho: #f6e9d6;
+  /* Faixas de acerto, de 20 em 20 pontos: do vermelho ao azul. */
   --faixa-0: #be1e2d;
-  --faixa-1: #f7941e;
-  --faixa-2: #6fa35f;
-  --faixa-3: #2f6b8f;
+  --faixa-1: #f15a29;
+  --faixa-2: #f7941e;
+  --faixa-3: #6fa35f;
+  --faixa-4: #2f6b8f;
+  --falta-fundo: #fff6e5;
 
   color-scheme: light;
   font-family: var(--font-body);
@@ -555,31 +558,23 @@ abbr[title] {
   background: #e6f0e4;
   color: #2f5f2c;
 }
-.selo-faixa-0,
-.selo-faixa-1,
-.selo-faixa-2,
-.selo-faixa-3 {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 14px;
-}
-.selo-faixa-0,
 .calor-0 {
   background: #fbe8e9;
   color: #9c1421;
 }
-.selo-faixa-1,
 .calor-1 {
+  background: #fdebe4;
+  color: #8a2a0e;
+}
+.calor-2 {
   background: #feefdb;
   color: #5e1216;
 }
-.selo-faixa-2,
-.calor-2 {
+.calor-3 {
   background: #eaf3e6;
   color: #2f5f2c;
 }
-.selo-faixa-3,
-.calor-3 {
+.calor-4 {
   background: #e4eef5;
   color: #245470;
 }
@@ -739,59 +734,11 @@ abbr[title] {
   font-size: 13px;
 }
 
-.faixas-barra {
-  display: flex;
-  height: 16px;
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  gap: 2px;
-  margin-bottom: 16px;
-}
-.faixas-seg {
-  min-width: 4px;
-}
-.faixas-vazia {
-  background: var(--trilho);
-}
-.faixas-legenda,
-.faixas-previa {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-}
-.faixas-legenda li {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  font-size: 15px;
-}
-.faixas-legenda strong {
-  color: var(--text-heading);
-  font-weight: 600;
-}
 .faixas-ponto {
   display: inline-block;
   width: 12px;
   height: 12px;
   border-radius: var(--radius-pill);
-}
-.faixas-qtd {
-  font-family: var(--font-display);
-  font-weight: 700;
-  color: var(--text-heading);
-  font-variant-numeric: tabular-nums;
-}
-.faixas-previa {
-  margin: 4px 0 14px;
-}
-.faixas-previa li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
 }
 
 .mini-barra {
@@ -835,8 +782,7 @@ abbr[title] {
   min-width: 3px;
 }
 
-/* Cores das faixas de desempenho (depois das barras, para prevalecer sobre a cor padrão).
-   Vermelho, âmbar, verde e azul, como nos boletins de avaliação externa. */
+/* Cores das faixas de acerto (depois das barras, para prevalecer sobre a cor padrão). */
 .faixa-0 {
   background: var(--faixa-0);
 }
@@ -848,6 +794,9 @@ abbr[title] {
 }
 .faixa-3 {
   background: var(--faixa-3);
+}
+.faixa-4 {
+  background: var(--faixa-4);
 }
 
 /* Vazio e avisos */
@@ -3756,6 +3705,8 @@ html.letra-maior .janela {
   .faixa-1,
   .faixa-2,
   .faixa-3,
+  .faixa-4,
+  [class*='calor-'],
   .barra-preench,
   .mini-barra-preench,
   .progresso-barra,
@@ -3763,5 +3714,399 @@ html.letra-maior .janela {
   .kpi-valor {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+}
+
+/* Gráficos dos resultados */
+
+.subtitulo-espaco {
+  margin-top: 24px;
+}
+.grade-kpis.grade-kpis-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Alunos por faixa de acerto: cinco colunas. A barra mais alta ocupa toda a altura;
+   o número fica em cima dela, no espaço reservado pelo padding. */
+.histograma {
+  margin: 0;
+}
+.histograma-colunas {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  height: 200px;
+  padding-top: 34px;
+  border-bottom: 2px solid var(--border-subtle);
+}
+.histograma-coluna {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.histograma-valor {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-heading);
+  font-variant-numeric: tabular-nums;
+}
+.histograma-barra {
+  display: block;
+  width: 100%;
+  max-width: 72px;
+  flex-shrink: 0;
+  min-height: 2px;
+  border-radius: 8px 8px 0 0;
+}
+.histograma-rotulos {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--texto-2);
+}
+.histograma figcaption {
+  margin-top: 10px;
+}
+
+/* Acerto por questão: uma coluna por questão, de 0 a 100%, com a linha da metade. */
+.colunas-questoes-rolagem {
+  position: relative;
+  overflow-x: auto;
+}
+.colunas-questoes {
+  margin: 0;
+}
+.colunas-questoes-area {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  height: 160px;
+  margin-top: 22px;
+  border-bottom: 2px solid var(--border-subtle);
+}
+.colunas-questoes-metade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 50%;
+  border-top: 1px dashed var(--borda-campo);
+}
+.colunas-questoes-coluna {
+  flex: 1 1 0;
+  min-width: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.colunas-questoes-valor {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-heading);
+  font-variant-numeric: tabular-nums;
+}
+.colunas-questoes-barra {
+  display: block;
+  width: 100%;
+  max-width: 30px;
+  flex-shrink: 0;
+  border-radius: 5px 5px 0 0;
+}
+.colunas-questoes-numeros {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.colunas-questoes-numeros span {
+  flex: 1 1 0;
+  min-width: 22px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--texto-2);
+  font-variant-numeric: tabular-nums;
+}
+.colunas-questoes-numeros .matematica {
+  color: var(--text-heading);
+  font-weight: 700;
+}
+.colunas-questoes-disciplinas {
+  margin: 8px 0 0;
+}
+
+.legenda-faixas {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--texto-2);
+}
+.legenda-faixas li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Editor da lista de alunos: uma linha por aluno, com as cores das linhas do lançamento. */
+
+.editor-alunos {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.linha-aluno {
+  --cor-questao: var(--solar-red-800);
+  --cor-questao-texto: var(--solar-white);
+  --cor-questao-contorno: color-mix(in srgb, var(--cor-questao) 42%, var(--surface-card));
+  display: grid;
+  grid-template-columns: 120px 140px 104px 160px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-left: 4px solid var(--cor-questao);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--cor-questao) 5%, var(--surface-card));
+}
+.linha-aluno.cor-laranja {
+  --cor-questao: var(--solar-orange-600);
+}
+.linha-aluno.cor-amarela {
+  --cor-questao: var(--solar-amber-400);
+  --cor-questao-texto: var(--solar-maroon-950);
+}
+.linha-aluno:focus-within {
+  background: color-mix(in srgb, var(--cor-questao) 11%, var(--surface-card));
+}
+.linha-aluno.nova {
+  border: 2px dashed var(--borda-campo);
+  background: var(--surface-subtle);
+}
+.linha-aluno-cabecalho {
+  padding-top: 0;
+  padding-bottom: 0;
+  border-left-color: transparent;
+  background: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--texto-2);
+}
+.linha-aluno-casa {
+  min-width: 0;
+}
+/* Mesma especificidade da regra geral dos campos, que vem antes: estas prevalecem. */
+.linha-aluno .linha-aluno-casa input:not([type='checkbox']) {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+.linha-aluno .linha-aluno-casa.faltando input:not([type='checkbox']),
+.linha-aluno-casa.faltando select {
+  background: var(--falta-fundo);
+  border-color: var(--solar-amber-500);
+}
+.linha-aluno-casa.faltando input::placeholder {
+  color: #8a5a0b;
+  font-weight: 600;
+}
+.linha-aluno .linha-aluno-casa.repetido input:not([type='checkbox']) {
+  border-color: var(--status-danger);
+  box-shadow: 0 0 0 1px var(--status-danger);
+}
+.linha-aluno-sexo {
+  display: flex;
+  gap: 8px;
+}
+.linha-aluno-sexo .bolha {
+  width: 40px;
+  height: 40px;
+}
+.linha-aluno-sexo.faltando .bolha:not(.marcada) {
+  background: var(--falta-fundo);
+  border-color: var(--solar-amber-500);
+}
+.linha-aluno-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+.editor-alunos-rodape {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.editor-alunos-rodape p {
+  margin: 0;
+}
+
+/* Avisos de mudanças feitas pelos professores */
+
+.avisos {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.aviso-mudanca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  padding: 14px 18px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--brand-secondary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+}
+.aviso-mudanca > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.aviso-mudanca p {
+  margin: 0;
+}
+.aviso-mudanca .aviso-mudanca-texto {
+  margin-bottom: 2px;
+  color: var(--text-heading);
+}
+
+/* Provas para imprimir */
+
+.provas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20px;
+}
+.provas-folhas p {
+  margin-top: 0;
+}
+
+/* E-mails enviados (versão de teste) */
+
+.emails {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.email {
+  padding: 20px 24px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.email-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--text-heading);
+  overflow-wrap: anywhere;
+}
+.email-topo .texto-2 {
+  margin-left: auto;
+}
+.email-assunto {
+  margin: 10px 0 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-heading);
+}
+.email-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 12px;
+}
+.email-link .codigo {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .provas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .linha-aluno {
+    grid-template-columns: 110px 130px 100px 150px;
+  }
+  .linha-aluno-acoes {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .linha-aluno-acoes:empty {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .grade-kpis.grade-kpis-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .histograma-colunas,
+  .histograma-rotulos {
+    gap: 4px;
+  }
+  .histograma-rotulos {
+    font-size: 12px;
+  }
+  /* No celular, cada aluno vira um cartão de duas colunas, com o nome de cada casa em cima. */
+  .linha-aluno-cabecalho {
+    display: none;
+  }
+  .linha-aluno {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 10px;
+    padding: 10px 12px;
+  }
+  .linha-aluno-casa[data-rotulo]::before {
+    content: attr(data-rotulo);
+    display: block;
+    margin-bottom: 2px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--texto-2);
+  }
+  .linha-aluno-sexo[data-rotulo] {
+    flex-wrap: wrap;
+  }
+  .linha-aluno-sexo[data-rotulo]::before {
+    flex-basis: 100%;
+    margin-bottom: 0;
+  }
+  .aviso-mudanca .form-acoes {
+    width: 100%;
+  }
+  .email {
+    padding: 16px;
+  }
+  .email-topo .texto-2 {
+    margin-left: 0;
   }
 }

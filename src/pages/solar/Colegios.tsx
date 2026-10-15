@@ -2,7 +2,7 @@ import { ChevronRight, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Cabecalho, Cartao, Selo, Vazio } from '../../components/ui'
-import { alunosAtivos, contatoDoColegio, permissoesDe, pessoaDoPerfil, turmasDoColegio } from '../../lib/consultas'
+import { alunosAtivos, contatoDoColegio, membroSolarDoColegio, permissoesDe, pessoaDoPerfil, turmasDoColegio } from '../../lib/consultas'
 import { compararTexto, plural } from '../../lib/formato'
 import { criarColegio, type DadosColegio } from '../../store/acoes'
 import { useDb } from '../../store/db'
@@ -25,7 +25,7 @@ export default function Colegios() {
       <Cabecalho
         sobretitulo="Rede"
         titulo="Colégios"
-        subtitulo="Cada colégio tem uma pessoa responsável pela coordenação, definida pela Solar. A coordenação cadastra as turmas, os professores e os alunos."
+        subtitulo="Cada colégio fica aos cuidados de uma pessoa da Solar, que define quem responde pela coordenação. A coordenação cadastra as turmas, os professores e os alunos."
         acoes={
           editarRede &&
           !criando && (
@@ -39,7 +39,7 @@ export default function Colegios() {
         <FormularioColegio
           comResponsavel
           rotuloSalvar="Cadastrar colégio"
-          aoSalvar={(dados, responsavel) => navigate(`/solar/colegios/${criarColegio(dados, responsavel)}`)}
+          aoSalvar={(dados, responsavel) => navigate(`/solar/colegios/${criarColegio(dados, responsavel)}`, { state: { enviado: responsavel?.email ?? null } })}
           aoCancelar={() => setCriando(false)}
         />
       )}
@@ -52,13 +52,14 @@ export default function Colegios() {
               const turmas = turmasDoColegio(db, colegio.id)
               const alunos = turmas.reduce((s, t) => s + alunosAtivos(db, t.id).length, 0)
               const responsavel = contatoDoColegio(db, colegio.id)
+              const membroSolar = membroSolarDoColegio(db, colegio)
               return (
                 <li key={colegio.id}>
                   <Link to={`/solar/colegios/${colegio.id}`} className="lista-link lista-link-colegio">
                     <span>
                       <span className="lista-link-titulo">{colegio.nome}</span>
                       <span className="texto-2 pequeno bloco">
-                        {colegio.cidade}/{colegio.uf}
+                        {colegio.cidade}/{colegio.uf} · {membroSolar ? `pela Solar: ${membroSolar.nome}` : 'ninguém da Solar ainda'}
                       </span>
                     </span>
                     <span className="texto-2">{plural(turmas.length, 'turma', 'turmas')}</span>
@@ -137,6 +138,7 @@ export function FormularioColegio(props: {
       {props.comResponsavel && (
         <>
           <h3 className="subtitulo">Responsável pela coordenação (pode ficar para depois)</h3>
+          <p className="campo-ajuda">A pessoa recebe por e-mail o link de acesso, que entra direto na conta dela. Na Solar, o colégio fica aos cuidados de quem o cadastra.</p>
           <div className="form-grade">
             <label className="campo">
               <span>Nome</span>

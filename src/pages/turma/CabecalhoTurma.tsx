@@ -1,6 +1,6 @@
-import { ChartColumn, ClipboardList, Printer, Users, type LucideIcon } from 'lucide-react'
+import { ChartColumn, ClipboardList, Users, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Link, NavLink } from 'react-router'
+import { NavLink } from 'react-router'
 import { Cabecalho } from '../../components/ui'
 import { alunosAtivos, anoLetivoAtual, avaliacaoDaTurma, nomesProfessores } from '../../lib/consultas'
 import { plural, turmaNome } from '../../lib/formato'
@@ -10,7 +10,7 @@ export type AbaTurma = 'lancar' | 'resultados' | 'alunos'
 
 /**
  * Cabeçalho de todas as páginas de uma turma, com as mesmas abas para professor e coordenação:
- * Lançar respostas, Resultados, Alunos e Imprimir material. A Solar vê só os resultados.
+ * Lançar respostas, Resultados e Alunos. A Solar vê só os resultados. Imprimir as provas é só na aba Provas da coordenação.
  */
 export function CabecalhoTurma(props: {
   db: Db
@@ -30,7 +30,7 @@ export function CabecalhoTurma(props: {
   const comAbas = perfil.papel !== 'solar' && !anterior
   const alunos = alunosAtivos(db, turma.id).length
 
-  const abas: { id: AbaTurma | 'imprimir'; rotulo: string; para: string; Icone: LucideIcon }[] = []
+  const abas: { id: AbaTurma; rotulo: string; para: string; Icone: LucideIcon }[] = []
   if (prova) abas.push({ id: 'lancar', rotulo: 'Lançar respostas', para: `${base}/lancar/${prova.caderno.id}/${turma.id}`, Icone: ClipboardList })
   if (prova) abas.push({ id: 'resultados', rotulo: 'Resultados', para: `${base}/resultados/${prova.caderno.id}/${turma.id}`, Icone: ChartColumn })
   abas.push({ id: 'alunos', rotulo: 'Alunos', para: `${base}/turma/${turma.id}/alunos`, Icone: Users })
@@ -58,11 +58,6 @@ export function CabecalhoTurma(props: {
               <Icone size={18} aria-hidden /> {rotulo}
             </NavLink>
           ))}
-          {prova && (
-            <Link to={`/imprimir/material/${prova.caderno.id}/${turma.id}`} className="aba-turma">
-              <Printer size={18} aria-hidden /> Imprimir material
-            </Link>
-          )}
         </nav>
       )}
     </>

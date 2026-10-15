@@ -1,12 +1,11 @@
 // Os alunos aparecem no site só pelas iniciais e pelo número de chamada.
-// O nome completo pode ser colado na tela de cadastro, mas é convertido antes de salvar.
 
 /** Partículas que não entram nas iniciais: "Ana da Silva" vira A.S. */
 const PARTICULAS = new Set(['da', 'das', 'de', 'di', 'do', 'dos', 'du', 'e'])
 
 const semAcentos = (texto: string) => texto.normalize('NFD').replace(/[̀-ͯ]/g, '')
 
-/** "Ana Clara de Souza" → "A.C.S." */
+/** "Ana Clara de Souza" → "A.C.S." (usado para gerar os dados fictícios). */
 export function iniciaisDoNome(nome: string): string {
   const letras = semAcentos(nome)
     .split(/[\s'-]+/)
@@ -16,21 +15,18 @@ export function iniciaisDoNome(nome: string): string {
   return letras.length ? `${letras.join('.')}.` : ''
 }
 
-/** Aceita "acs", "A C S" ou "A.C.S." e devolve "A.C.S."; null se não forem só iniciais. */
-export function normalizarIniciais(texto: string): string | null {
-  const limpo = semAcentos(texto).toUpperCase().replace(/[.\s]/g, '')
-  if (!/^[A-Z]{1,6}$/.test(limpo)) return null
-  return `${limpo.split('').join('.')}.`
+/** O que a pessoa digita vira maiúsculas, só com letras: "acs" ou "a.c.s" → "A.C.S." */
+export function formatarIniciais(texto: string): string {
+  const letras = semAcentos(texto).toUpperCase().replace(/[^A-Z]/g, '')
+  return letras ? `${letras.split('').join('.')}.` : ''
 }
-
-/** Um texto com espaço entre palavras de duas letras ou mais parece um nome, não iniciais. */
-export const pareceNome = (texto: string) => /\p{L}{2,}\s+\p{L}{2,}/u.test(texto.trim())
 
 /** Iniciais que aparecem mais de uma vez na lista. */
 export function iniciaisRepetidas(lista: { iniciais: string }[]): Set<string> {
   const vistas = new Set<string>()
   const repetidas = new Set<string>()
   for (const { iniciais } of lista) {
+    if (!iniciais) continue
     if (vistas.has(iniciais)) repetidas.add(iniciais)
     vistas.add(iniciais)
   }
@@ -38,7 +34,10 @@ export function iniciaisRepetidas(lista: { iniciais: string }[]): Set<string> {
 }
 
 /** Como o aluno aparece em listas e títulos: "Nº 7 · A.C.S." */
-export const identificacao = (aluno: { numero: number; iniciais: string }) => `Nº ${aluno.numero} · ${aluno.iniciais}`
+export const identificacao = (aluno: { numero: string; iniciais: string }) => `Nº ${aluno.numero || '—'} · ${aluno.iniciais || 'sem iniciais'}`
 
-/** Como o aluno aparece no meio de uma frase: "o nº 7 (A.C.S.)". */
-export const alunoEmTexto = (aluno: { numero: number; iniciais: string }) => `nº ${aluno.numero} (${aluno.iniciais})`
+/** Como o aluno aparece no meio de uma frase, depois de "o": "o nº 7 (A.C.S.)", "o aluno A.C.S.". */
+export function alunoEmTexto(aluno: { numero: string; iniciais: string }): string {
+  if (aluno.numero) return `nº ${aluno.numero}${aluno.iniciais ? ` (${aluno.iniciais})` : ''}`
+  return aluno.iniciais ? `aluno ${aluno.iniciais}` : 'aluno sem número nem iniciais'
+}

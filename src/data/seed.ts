@@ -1,5 +1,6 @@
 import { criarAleatorio, type Aleatorio } from '../lib/aleatorio'
 import { compararTexto, hojeIso, normalizar, somarDias } from '../lib/formato'
+import { textoMudancaAluno } from '../lib/alunos'
 import { iniciaisDoNome } from '../lib/iniciais'
 import {
   BRANCO,
@@ -17,12 +18,13 @@ import {
   type Lancamento,
   type Letra,
   type MembroSolar,
-  type Pedido,
   type Professor,
   type Questao,
   type RespostaAluno,
   type Serie,
+  type Sexo,
   type Situacao,
+  type TipoMudancaAluno,
   type Turma,
   type Turno,
 } from '../types'
@@ -30,7 +32,7 @@ import { habilidadesDoAno } from './bncc'
 import { NOMES_ADULTOS, NOMES_MENINAS, NOMES_MENINOS, SOBRENOMES } from './nomes'
 
 /** Mude quando o formato dos dados mudar: o navegador descarta o que tinha salvo e recria os exemplos. */
-export const VERSAO_DADOS = 3
+export const VERSAO_DADOS = 4
 
 const ANO_LETIVO = 2026
 const ANO_ANTERIOR = 2025
@@ -72,6 +74,17 @@ const COLEGIOS: ColegioBase[] = [
 /** Colégio que ainda não tem responsável pela coordenação, para o aviso aparecer no início da Solar. */
 const COLEGIO_SEM_RESPONSAVEL = 'recanto'
 
+/** Pessoa da equipe Solar que cuida de cada colégio. A da versão de teste cuida do Monte Verde e do Recanto. */
+const MEMBRO_SOLAR_DO_COLEGIO: Record<string, Id> = {
+  'monte-verde': 'solar-1',
+  horizonte: 'solar-2',
+  aurora: 'solar-3',
+  'vila-nova': 'solar-2',
+  recanto: 'solar-1',
+}
+
+const ALFABETO_TOKEN = 'abcdefghijkmnpqrstuvwxyz23456789'.split('')
+
 function criarAvaliacoes(hoje: string): Avaliacao[] {
   return [
     { id: 'av-2025', titulo: 'Avaliação anual 2025', anoLetivo: ANO_ANTERIOR, aplicacaoInicio: '2025-11-17', aplicacaoFim: '2025-11-21', prazoLancamento: '2025-12-05' },
@@ -87,19 +100,12 @@ function criarAvaliacoes(hoje: string): Avaliacao[] {
   ]
 }
 
-const TAMANHO_PDF_EXEMPLO: Record<Serie, number> = { 1: 9_100, 2: 9_100, 3: 6_200, 4: 6_200, 5: 6_200 }
+const TAMANHO_PDF_EXEMPLO: Record<Serie, number> = { 1: 10_015, 2: 10_015, 3: 12_034, 4: 12_035, 5: 6_311 }
 
-/** Disciplinas de cada questão, na ordem da prova (igual a scripts/gerar_pdfs_exemplo.py). */
+/** Disciplinas de cada questão, na ordem da prova (igual a scripts/gerar_pdfs_exemplo.py): só Português e Matemática. */
 export function disciplinasDoCaderno(serie: Serie): string[] {
-  const porDisciplina = serie <= 2 ? 6 : 8
-  return [
-    ...Array<string>(porDisciplina).fill('Português'),
-    ...Array<string>(porDisciplina).fill('Matemática'),
-    'Ciências',
-    'Ciências',
-    'História',
-    'Geografia',
-  ]
+  const porDisciplina = serie <= 2 ? 8 : 10
+  return [...Array<string>(porDisciplina).fill('Português'), ...Array<string>(porDisciplina).fill('Matemática')]
 }
 
 /** Parâmetros usados só para simular respostas plausíveis; não vão para os dados. */
@@ -138,7 +144,7 @@ const COMENTADAS: { cadernoId: Id; indice: number; habilidade: string; distrator
   },
   {
     cadernoId: 'cad-2026-3',
-    indice: 9,
+    indice: 11,
     habilidade: 'EF03MA05',
     distrator: (g) => (g === 'D' ? 'A' : 'D'),
     texto: 'ter somado sem considerar a reserva (o “vai um”).',
@@ -156,8 +162,10 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   const professores: Professor[] = []
   const turmas: Turma[] = []
   const alunos: Aluno[] = []
-  const pedidos: Pedido[] = []
   const historico: Evento[] = []
+  // Os tokens dos links de acesso saem de outro sorteio, para não mudar os nomes e as respostas simuladas.
+  const sorteioTokens = criarAleatorio(SEMENTE + 1)
+  const token = () => Array.from({ length: 20 }, () => sorteioTokens.escolher(ALFABETO_TOKEN)).join('')
 
   // Só para a simulação: não vão para os dados.
   const nomeCompleto = new Map<Id, string>()
@@ -166,7 +174,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   const fazProvaAdaptada = new Set<Id>()
   /** Turma de 2025 de cada aluno e o número de chamada que ele tinha nela. */
   const turmaAnterior = new Map<Id, Id>()
-  const numeroAnterior = new Map<Id, number>()
+  const numeroAnterior = new Map<Id, string>()
 
   const adultosUsados = new Set<string>()
   function nomeAdulto(): string {
@@ -185,7 +193,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
 
   const equipeSolar: MembroSolar[] = (['responsavel', 'edicao', 'edicao', 'visualizacao', 'visualizacao'] as const).map((papel, i) => {
     const nome = nomeAdulto()
-    return { id: `solar-${i + 1}`, nome, email: emailDe(nome, 'solar.example'), telefone: `(11) 0000-01${String(i + 1).padStart(2, '0')}`, papel }
+    return { id: `solar-${i + 1}`, nome, email: emailDe(nome, 'solar.example'), telefone: `(11) 0000-01${String(i + 1).padStart(2, '0')}`, papel, token: token() }
   })
   const quemConfere = equipeSolar[1].nome
 
@@ -193,12 +201,12 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     const colegioId = `col-${base.slug}`
     const dominio = `${base.slug.replace(/-/g, '')}.example`
     const telefone = (n: number) => `(${base.ddd}) 0000-0${String(i * 10 + n).padStart(3, '0')}`
-    colegios.push({ id: colegioId, nome: base.nome, cidade: base.cidade, uf: base.uf })
+    colegios.push({ id: colegioId, nome: base.nome, cidade: base.cidade, uf: base.uf, membroSolarId: MEMBRO_SOLAR_DO_COLEGIO[base.slug] ?? null })
     if (base.slug !== COLEGIO_SEM_RESPONSAVEL) {
-      coordenadores.push({ id: `coord-${base.slug}-1`, colegioId, nome: nomeAdulto(), email: `coordenacao@${dominio}`, telefone: telefone(1), responsavel: true })
+      coordenadores.push({ id: `coord-${base.slug}-1`, colegioId, nome: nomeAdulto(), email: `coordenacao@${dominio}`, telefone: telefone(1), responsavel: true, token: token() })
     }
     if (colegioId === PESSOAS_DE_TESTE.colegioId) {
-      coordenadores.push({ id: `coord-${base.slug}-2`, colegioId, nome: nomeAdulto(), email: `orientacao@${dominio}`, telefone: telefone(2), responsavel: false })
+      coordenadores.push({ id: `coord-${base.slug}-2`, colegioId, nome: nomeAdulto(), email: `orientacao@${dominio}`, telefone: telefone(2), responsavel: false, token: token() })
     }
 
     let contador = 0
@@ -212,7 +220,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
       const serie = (indiceSerie + 1) as Serie
       for (const letra of letrasDoAno(quantidade)) {
         const nome = nomeAdulto()
-        professores.push({ id: `prof-${base.slug}-${serie}${letra}`, colegioId, nome, email: emailDe(nome, dominio), ativo: true })
+        professores.push({ id: `prof-${base.slug}-${serie}${letra}`, colegioId, nome, email: emailDe(nome, dominio), ativo: true, token: token() })
       }
     })
     for (const ano of [ANO_ANTERIOR, ANO_LETIVO]) {
@@ -230,8 +238,8 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     }
     const turmasDoAno = (ano: number, serie: Serie) => [...turmasDe.values()].filter((t) => t.anoLetivo === ano && t.serie === serie)
 
-    function criarAluno(turmaId: Id, nome: string, numero: number, anoIngresso: number, ativo = true): Aluno {
-      const aluno: Aluno = { id: novoAlunoId(), turmaId, iniciais: iniciaisDoNome(nome), numero, anoIngresso, ativo }
+    function criarAluno(turmaId: Id, { nome, sexo }: Crianca, numero: string, anoIngresso: number, ativo = true): Aluno {
+      const aluno: Aluno = { id: novoAlunoId(), turmaId, numero, iniciais: iniciaisDoNome(nome), sexo, anoIngresso, ativo }
       alunos.push(aluno)
       nomeCompleto.set(aluno.id, nome)
       proficiencia.set(aluno.id, base.efeito + rng.normal(0, 0.85))
@@ -242,11 +250,14 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     // Alunos de 2026. Quem já estava no colégio em 2025 (do 2º ano em diante) fez a prova de 2025 numa turma do ano anterior.
     const de2025 = new Map<Id, Id[]>()
     for (const turma of ([1, 2, 3, 4, 5] as Serie[]).flatMap((s) => turmasDoAno(ANO_LETIVO, s))) {
-      const nomes = new Set<string>()
+      const criancas = new Map<string, Crianca>()
       const total = rng.inteiro(12, 20)
-      while (nomes.size < total) nomes.add(nomeCrianca(rng))
-      ;[...nomes].sort(compararTexto).forEach((nome, indice) => {
-        const aluno = criarAluno(turma.id, nome, indice + 1, sortearIngresso(rng, turma.serie, base.novos, ANO_LETIVO))
+      while (criancas.size < total) {
+        const crianca = sortearCrianca(rng)
+        criancas.set(crianca.nome, crianca)
+      }
+      ;[...criancas.values()].sort((a, b) => compararTexto(a.nome, b.nome)).forEach((crianca, indice) => {
+        const aluno = criarAluno(turma.id, crianca, String(indice + 1), sortearIngresso(rng, turma.serie, base.novos, ANO_LETIVO))
         if (turma.serie === 1 || aluno.anoIngresso! > ANO_ANTERIOR) return
         const opcoes = turmasDoAno(ANO_ANTERIOR, (turma.serie - 1) as Serie)
         const mesmaLetra = opcoes.find((t) => t.nome === turma.nome)
@@ -260,7 +271,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
       const lista = de2025.get(turma.id) ?? []
       const quantosSaem = turma.serie === 5 ? rng.inteiro(12, 20) : rng.inteiro(0, 2)
       for (let k = 0; k < quantosSaem; k++) {
-        const aluno = criarAluno(turma.id, nomeCrianca(rng), 0, sortearIngresso(rng, turma.serie, base.novos, ANO_ANTERIOR), false)
+        const aluno = criarAluno(turma.id, sortearCrianca(rng), '', sortearIngresso(rng, turma.serie, base.novos, ANO_ANTERIOR), false)
         aluno.saida = turma.serie === 5 ? { em: '2025-12-12', motivo: 'concluiu' } : { em: `2026-01-${String(rng.inteiro(10, 30))}`, motivo: rng.num() < 0.6 ? 'transferencia' : 'mudou_de_cidade' }
         lista.push(aluno.id)
       }
@@ -268,9 +279,9 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
         .sort((a, b) => compararTexto(nomeCompleto.get(a)!, nomeCompleto.get(b)!))
         .forEach((id, indice) => {
           turmaAnterior.set(id, turma.id)
-          numeroAnterior.set(id, indice + 1)
+          numeroAnterior.set(id, String(indice + 1))
           const aluno = alunos.find((a) => a.id === id)!
-          if (!aluno.ativo) aluno.numero = indice + 1
+          if (!aluno.ativo) aluno.numero = String(indice + 1)
         })
     }
   })
@@ -319,13 +330,13 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
         avaliacaoId: avaliacao.id,
         serie,
         numAlternativas: 4,
-        usaFolhaRespostas: serie >= 3,
+        usaFolhaRespostas: serie === 5,
         questoes,
         pdf: {
           nome: `prova-exemplo-${serie}ano.pdf`,
           tamanho: TAMANHO_PDF_EXEMPLO[serie],
           origem: 'exemplo',
-          url: `exemplos/caderno-exemplo-${serie}ano.pdf`,
+          url: `exemplos/prova-exemplo-${serie}ano.pdf`,
           enviadoEm: somarDias(avaliacao.aplicacaoInicio, -21),
         },
         conferencia: conferida ? { por: anterior ? equipeSolar[0].nome : quemConfere, em: somarDias(avaliacao.aplicacaoInicio, -10) } : null,
@@ -338,7 +349,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     return proficiencia.get(alunoId)! + efeitoDoTempo(turma.anoLetivo - aluno.anoIngresso! + 1) + efeitoTurma.get(turma.id)! + rng.normal(0, 0.15)
   }
 
-  function simularLancamento(turma: Turma, lista: { id: Id; numero: number }[], status: Exclude<StatusSimulado, 'nao_iniciado'>, quando: () => string): Lancamento {
+  function simularLancamento(turma: Turma, lista: { id: Id; numero: string }[], status: Exclude<StatusSimulado, 'nao_iniciado'>, quando: () => string): Lancamento {
     const cadernoId = `cad-${turma.anoLetivo}-${turma.serie}`
     const itens = itensSimulados.get(cadernoId)!
     const respostas: Record<Id, RespostaAluno> = {}
@@ -358,13 +369,13 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   for (const turma of turmas) {
     if (turma.anoLetivo === ANO_ANTERIOR) {
       const lista = [...turmaAnterior].filter(([, t]) => t === turma.id).map(([id]) => ({ id, numero: numeroAnterior.get(id)! }))
-      lista.sort((a, b) => a.numero - b.numero)
+      lista.sort((a, b) => Number(a.numero) - Number(b.numero))
       lancamentos.push(simularLancamento(turma, lista, 'concluido', () => momentoEntre(rng, '2025-11-22', '2025-12-05')))
       continue
     }
     const status = STATUS_FIXO_2026[turma.id] ?? sortearStatus(rng)
     if (status === 'nao_iniciado') continue
-    const lista = alunos.filter((a) => a.turmaId === turma.id).sort((a, b) => a.numero - b.numero)
+    const lista = alunos.filter((a) => a.turmaId === turma.id).sort((a, b) => Number(a.numero) - Number(b.numero))
     lancamentos.push(simularLancamento(turma, lista, status, () => momentoEntre(rng, aval2026.aplicacaoFim, somarDias(hoje, -1))))
   }
 
@@ -386,109 +397,80 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   turmas.find((t) => t.id === 'tur-monte-verde-2026-5C')!.professorIds = []
   historico.push(evento(`${somarDias(hoje, -9)}T17:40:00`, `Desativou o acesso de ${quemSaiu.nome}, que saiu do colégio. O 5º ano C ficou sem professor.`, 'tur-monte-verde-2026-5C'))
 
-  // Três alunos do 2º ano B ainda sem o ano de entrada no colégio.
+  // Dados faltando, para a coordenação e os professores verem o lembrete: ano de entrada, sexo e número.
   alunos.filter((a) => a.turmaId === 'tur-monte-verde-2026-2B').slice(0, 3).forEach((a) => (a.anoIngresso = null))
+  alunos.filter((a) => a.turmaId === 'tur-monte-verde-2026-1C').slice(2, 4).forEach((a) => (a.sexo = null))
+  alunos.filter((a) => a.turmaId === 'tur-monte-verde-2026-4B').slice(-1).forEach((a) => (a.numero = ''))
 
-  // O professor da versão de teste pediu a inclusão de um aluno e já lançou a prova dele.
-  const turmaTeste = turmas.find((t) => t.id === 'tur-monte-verde-2026-3A')!
-  const daTurmaTeste = alunos.filter((a) => a.turmaId === turmaTeste.id)
-  const pendente: Aluno = {
-    id: 'alu-monte-verde-novo-1',
-    turmaId: turmaTeste.id,
-    iniciais: 'L.M.R.',
-    numero: Math.max(...daTurmaTeste.map((a) => a.numero)) + 1,
-    anoIngresso: ANO_LETIVO,
-    ativo: true,
-    pendente: true,
-  }
-  alunos.push(pendente)
-  proficiencia.set(pendente.id, 0.1)
-  const lancTeste = lancamentos.find((l) => l.turmaId === turmaTeste.id)!
-  lancTeste.respostas[pendente.id] = {
-    situacao: 'presente',
-    marcas: simularMarcas(rng, theta(pendente.id, turmaTeste), itensSimulados.get(lancTeste.cadernoId)!),
-    atualizadoEm: `${somarDias(hoje, -2)}T10:20:00`,
-    numero: pendente.numero,
-  }
-  pedidos.push({
-    id: 'ped-1',
-    tipo: 'incluir',
-    colegioId: PESSOAS_DE_TESTE.colegioId,
-    turmaId: turmaTeste.id,
-    alunoId: pendente.id,
-    professorId: PESSOAS_DE_TESTE.professorId,
-    criadoEm: `${somarDias(hoje, -2)}T10:12:00`,
-    iniciais: pendente.iniciais,
-    numero: pendente.numero,
-    anoIngresso: pendente.anoIngresso,
-    situacao: 'pendente',
+  // Mudanças que os professores fizeram na lista de alunos: a coordenação é avisada e marca que está ciente.
+  const professorTeste = professores.find((p) => p.id === PESSOAS_DE_TESTE.professorId)!
+  const mudanca = (
+    em: string,
+    professor: Professor,
+    aluno: Aluno,
+    tipo: TipoMudancaAluno,
+    extra: Parameters<typeof textoMudancaAluno>[2] = {},
+    ciente?: string,
+  ): Evento => ({
+    id: `ev-${historico.length + 1}`,
+    em,
+    por: professor.nome,
+    colegioId: professor.colegioId,
+    turmaId: aluno.turmaId,
+    cadernoId: null,
+    texto: textoMudancaAluno(tipo, aluno, extra),
+    avisarCoordenacao: true,
+    alunoId: aluno.id,
+    tipo,
+    ...(extra.campos ? { campos: extra.campos } : {}),
+    ...(ciente ? { ciente: { por: coordenacaoTeste.nome, em: ciente } } : {}),
   })
 
-  // Um pedido já aprovado, para o professor ver a resposta da coordenação.
+  // A professora da versão de teste corrigiu um ano de entrada há duas semanas (a coordenação já viu)...
+  const turmaTeste = turmas.find((t) => t.id === 'tur-monte-verde-2026-3A')!
+  const daTurmaTeste = alunos.filter((a) => a.turmaId === turmaTeste.id)
   const corrigido = daTurmaTeste.find((a) => a.anoIngresso! < ANO_ANTERIOR)!
   const anoAntes = corrigido.anoIngresso!
   corrigido.anoIngresso = anoAntes - 1
-  pedidos.push({
-    id: 'ped-2',
-    tipo: 'correcao',
-    colegioId: PESSOAS_DE_TESTE.colegioId,
-    turmaId: turmaTeste.id,
-    alunoId: corrigido.id,
-    professorId: PESSOAS_DE_TESTE.professorId,
-    criadoEm: `${somarDias(hoje, -16)}T08:30:00`,
-    iniciais: corrigido.iniciais,
-    numero: corrigido.numero,
-    anoIngresso: corrigido.anoIngresso,
-    situacao: 'aprovado',
-    decisao: { por: coordenacaoTeste.nome, em: `${somarDias(hoje, -15)}T14:05:00` },
-  })
   historico.push(
-    evento(
+    mudanca(
+      `${somarDias(hoje, -16)}T08:30:00`,
+      professorTeste,
+      corrigido,
+      'correcao',
+      { campos: { anoIngresso: { de: String(anoAntes), para: String(anoAntes - 1) } } },
       `${somarDias(hoje, -15)}T14:05:00`,
-      `Corrigiu o ano de entrada do nº ${corrigido.numero} (${corrigido.iniciais}) de ${anoAntes} para ${corrigido.anoIngresso}, a pedido de ${professores.find((p) => p.id === PESSOAS_DE_TESTE.professorId)!.nome}.`,
-      turmaTeste.id,
     ),
   )
 
-  // Outro professor do mesmo colégio avisou que um aluno saiu; o pedido espera a coordenação há alguns dias.
-  const saiu = alunos.find((a) => a.turmaId === 'tur-monte-verde-2026-1B' && a.numero === 6)!
-  pedidos.push({
-    id: 'ped-3',
-    tipo: 'saida',
-    colegioId: PESSOAS_DE_TESTE.colegioId,
-    turmaId: saiu.turmaId,
-    alunoId: saiu.id,
-    professorId: 'prof-monte-verde-1B',
-    criadoEm: `${somarDias(hoje, -5)}T16:45:00`,
-    motivoSaida: 'transferencia',
-    situacao: 'pendente',
-  })
-
-  // Num outro colégio, uma inclusão parada há uma semana (aparece para a Solar).
-  const turmaHorizonte = turmas.find((t) => t.id === 'tur-horizonte-2026-2A')!
-  const outroPendente: Aluno = {
-    id: 'alu-horizonte-novo-1',
-    turmaId: turmaHorizonte.id,
-    iniciais: 'B.S.C.',
-    numero: Math.max(...alunos.filter((a) => a.turmaId === turmaHorizonte.id).map((a) => a.numero)) + 1,
+  // ... e incluiu uma aluna que chegou, já com a prova lançada.
+  const chegou: Aluno = {
+    id: 'alu-monte-verde-novo-1',
+    turmaId: turmaTeste.id,
+    numero: String(daTurmaTeste.length + 1),
+    iniciais: 'L.M.R.',
+    sexo: 'F',
     anoIngresso: ANO_LETIVO,
     ativo: true,
-    pendente: true,
   }
-  alunos.push(outroPendente)
-  pedidos.push({
-    id: 'ped-4',
-    tipo: 'incluir',
-    colegioId: turmaHorizonte.colegioId,
-    turmaId: turmaHorizonte.id,
-    alunoId: outroPendente.id,
-    professorId: 'prof-horizonte-2A',
-    criadoEm: `${somarDias(hoje, -7)}T11:00:00`,
-    iniciais: outroPendente.iniciais,
-    numero: outroPendente.numero,
-    anoIngresso: outroPendente.anoIngresso,
-    situacao: 'pendente',
-  })
+  alunos.push(chegou)
+  proficiencia.set(chegou.id, 0.1)
+  const lancTeste = lancamentos.find((l) => l.turmaId === turmaTeste.id)!
+  lancTeste.respostas[chegou.id] = {
+    situacao: 'presente',
+    marcas: simularMarcas(rng, theta(chegou.id, turmaTeste), itensSimulados.get(lancTeste.cadernoId)!),
+    atualizadoEm: `${somarDias(hoje, -2)}T10:20:00`,
+    numero: chegou.numero,
+  }
+  historico.push(mudanca(`${somarDias(hoje, -2)}T10:12:00`, professorTeste, chegou, 'inclusao'))
+
+  // Outro professor tirou da lista um aluno que foi para outra escola.
+  const saiu = alunos.find((a) => a.turmaId === 'tur-monte-verde-2026-1B' && a.numero === '6')!
+  saiu.ativo = false
+  saiu.saida = { em: somarDias(hoje, -5), motivo: 'transferencia' }
+  historico.push(
+    mudanca(`${somarDias(hoje, -5)}T16:45:00`, professores.find((p) => p.id === 'prof-monte-verde-1B')!, saiu, 'saida', { motivo: 'transferencia' }),
+  )
 
   historico.push({
     id: `ev-${historico.length + 1}`,
@@ -512,19 +494,27 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     avaliacoes,
     cadernos,
     lancamentos,
-    pedidos,
     historico,
-    config: { faixas: [40, 60, 80], anoLetivo: ANO_LETIVO },
+    emails: [],
+    config: { anoLetivo: ANO_LETIVO },
   }
 }
 
-function nomeCrianca(rng: Aleatorio): string {
-  const primeiro = rng.num() < 0.5 ? rng.escolher(NOMES_MENINAS) : rng.escolher(NOMES_MENINOS)
+interface Crianca {
+  /** Só para tirar as iniciais e ordenar a chamada: o nome não vai para os dados. */
+  nome: string
+  sexo: Sexo
+}
+
+function sortearCrianca(rng: Aleatorio): Crianca {
+  const menina = rng.num() < 0.5
+  const primeiro = menina ? rng.escolher(NOMES_MENINAS) : rng.escolher(NOMES_MENINOS)
+  const sexo: Sexo = menina ? 'F' : 'M'
   const sobrenome = rng.escolher(SOBRENOMES)
-  if (rng.num() < 0.35) return `${primeiro} ${sobrenome}`
+  if (rng.num() < 0.35) return { nome: `${primeiro} ${sobrenome}`, sexo }
   let segundo = rng.escolher(SOBRENOMES)
   while (segundo === sobrenome) segundo = rng.escolher(SOBRENOMES)
-  return `${primeiro} ${sobrenome} ${segundo}`
+  return { nome: `${primeiro} ${sobrenome} ${segundo}`, sexo }
 }
 
 /**

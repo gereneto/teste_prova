@@ -1,6 +1,6 @@
-import { ArrowRight, Building2, ClipboardList, RotateCcw, Users, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Building2, ClipboardList, Mail, RotateCcw, Users, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import logoBranco from '../assets/marca/logo-solar-branco.png'
 import { INICIO_DO_PAPEL } from '../components/Layout'
 import { Confirmacao } from '../components/ui'
@@ -18,13 +18,13 @@ const OPCOES: { papel: Papel; titulo: string; texto: string; Icone: LucideIcon }
   {
     papel: 'professor',
     titulo: 'Professor(a)',
-    texto: 'Lança as respostas da turma, pede mudanças na lista de alunos e vê os resultados só da própria turma.',
+    texto: 'Lança as respostas da turma, cuida da lista de alunos e vê os resultados só da própria turma.',
     Icone: ClipboardList,
   },
   {
     papel: 'coordenacao',
     titulo: 'Coordenação',
-    texto: 'Cuida das turmas, dos professores e dos alunos, responde aos pedidos e vê os resultados de todas as turmas do colégio.',
+    texto: 'Cuida das turmas, dos professores e dos alunos, imprime as provas e vê os resultados de todas as turmas do colégio.',
     Icone: Users,
   },
   {
@@ -108,9 +108,18 @@ export default function Entrada() {
             Versão de teste, com dados fictícios. O que você muda fica guardado só neste navegador: outras pessoas não veem as suas alterações.
             Duas abas abertas ao mesmo tempo, cada uma num perfil, mostram uma mudança aparecendo na outra.
           </p>
-          <button className="btn btn-pequeno btn-fantasma" onClick={() => setConfirmando(true)}>
-            <RotateCcw size={15} aria-hidden /> Restaurar dados de exemplo
-          </button>
+          <p>
+            Ao cadastrar uma pessoa, o site manda para o e-mail dela um link que entra direto na conta. Nesta versão os e-mails não saem de verdade: eles
+            ficam em <Link to="/emails">E-mails enviados</Link>.
+          </p>
+          <div className="form-acoes">
+            <Link className="btn btn-pequeno btn-fantasma" to="/emails">
+              <Mail size={15} aria-hidden /> E-mails enviados
+            </Link>
+            <button className="btn btn-pequeno btn-fantasma" onClick={() => setConfirmando(true)}>
+              <RotateCcw size={15} aria-hidden /> Restaurar dados de exemplo
+            </button>
+          </div>
         </footer>
       </main>
 

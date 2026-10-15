@@ -1,6 +1,6 @@
 import { Mail, Phone, Printer } from 'lucide-react'
 import { Link } from 'react-router'
-import { contatoDoColegio, responsavelSolar } from '../lib/consultas'
+import { contatoDoColegio, membroSolarDoColegio, responsavelSolar } from '../lib/consultas'
 import type { Contato, Db, Perfil } from '../types'
 
 type Papel = Perfil['papel']
@@ -8,38 +8,54 @@ type Papel = Perfil['papel']
 /** Passo a passo de cada perfil, também impresso numa folha (/imprimir/passo-a-passo/:papel). */
 export const PASSOS: Record<Papel, { titulo: string; texto: string }[]> = {
   professor: [
-    { titulo: 'Confira a lista da turma', texto: 'Na aba Alunos, compare a lista com o seu diário. Se faltar alguém, toque em “Falta um aluno na lista”.' },
-    { titulo: 'Imprima o material', texto: 'Toque em “Imprimir material da turma”. Saem a lista de chamada da prova e, do 3º ao 5º ano, as folhas de respostas.' },
-    { titulo: 'Aplique a prova', texto: 'Nas datas combinadas. Cada aluno recebe a folha com o próprio número.' },
+    {
+      titulo: 'Confira a lista da turma',
+      texto: 'Na aba Alunos, compare a lista com o seu diário. Você mesmo inclui, corrige ou tira alunos: cada mudança é salva na hora e a coordenação é avisada.',
+    },
+    { titulo: 'Complete o que falta', texto: 'Cada aluno tem número, iniciais, sexo e ano de entrada no colégio. O que ficar em branco aparece em amarelo para completar depois.' },
+    { titulo: 'Aplique a prova', texto: 'A coordenação imprime as provas. Aplique nas datas combinadas.' },
     { titulo: 'Lance as respostas', texto: 'Com as provas em ordem de número, toque em “Lançar respostas” e passe a letra que cada aluno marcou. Cada toque já fica salvo.' },
     { titulo: 'Conclua e veja os resultados', texto: 'Quando todos estiverem lançados, toque em “Concluir lançamento”. Os resultados da turma aparecem na hora.' },
   ],
   coordenacao: [
     { titulo: 'Confira as turmas do ano', texto: 'Em “Turmas e alunos”, veja se todas as turmas estão cadastradas.' },
-    { titulo: 'Diga quem cuida de cada turma', texto: 'Em “Professores”, cadastre os professores e escolha o professor de cada turma.' },
-    { titulo: 'Cole a lista de alunos', texto: 'Abra cada turma e cole a lista da secretaria. O site guarda só o número, as iniciais e o ano de entrada.' },
-    { titulo: 'Responda aos pedidos', texto: 'Em “Pedidos”, aprove ou recuse as mudanças que os professores pediram na lista de alunos.' },
-    { titulo: 'Acompanhe e converse', texto: 'No Início, acompanhe o lançamento. Em “Resultados”, veja o colégio e prepare a reunião pedagógica.' },
+    {
+      titulo: 'Diga quem cuida de cada turma',
+      texto: 'Em “Professores”, cadastre os professores e escolha o professor de cada turma. Cada professor recebe no e-mail o link para entrar no site.',
+    },
+    {
+      titulo: 'Monte a lista de alunos',
+      texto: 'Abra cada turma e inclua os alunos, um por linha: número, iniciais, sexo e ano de entrada. Os professores também podem incluir e corrigir.',
+    },
+    { titulo: 'Tome ciência dos avisos', texto: 'Em “Avisos”, veja o que os professores mudaram nas listas e toque em “Ciente”. Se precisar, corrija.' },
+    { titulo: 'Imprima as provas', texto: 'Em “Provas”, baixe a prova de cada ano para imprimir. No 5º ano, imprima também as folhas de respostas de cada turma.' },
+    { titulo: 'Acompanhe os resultados', texto: 'No Início, acompanhe o lançamento. Em “Resultados”, veja os gráficos do colégio e de cada turma.' },
   ],
   solar: [
     { titulo: 'Prepare as provas', texto: 'Em “Avaliações”, envie o PDF de cada ano e preencha o gabarito, a disciplina e a habilidade de cada questão.' },
     { titulo: 'Confira os gabaritos', texto: 'Uma segunda pessoa confere o gabarito com a prova impressa e marca “Gabarito conferido”.' },
-    { titulo: 'Acompanhe os colégios', texto: 'Em “Colégios”, veja quem é o responsável de cada um e se as turmas estão prontas.' },
+    {
+      titulo: 'Cuide dos seus colégios',
+      texto: 'Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa define quem responde pela coordenação, que recebe o link de acesso por e-mail.',
+    },
     { titulo: 'Acompanhe o lançamento', texto: 'No Início, veja o que falta e os alertas de gabarito.' },
-    { titulo: 'Leia os resultados', texto: 'Em “Resultados”, veja o panorama da rede e os pontos de melhoria.' },
+    { titulo: 'Leia os resultados', texto: 'Em “Resultados”, veja o panorama da rede, por colégio e por turma, e as questões com menos acertos.' },
   ],
 }
 
 export const PALAVRAS: { termo: string; definicao: string }[] = [
-  { termo: 'Avaliação', definicao: 'A aplicação anual da Prova Solar, com uma prova para cada ano.' },
+  { termo: 'Avaliação', definicao: 'A aplicação anual da Prova Solar, com uma prova para cada ano, de Português e Matemática.' },
   { termo: 'Prova', definicao: 'O papel que os alunos de um ano recebem, como a prova do 3º ano.' },
+  { termo: 'Folha de respostas', definicao: 'Só no 5º ano: os alunos marcam as respostas numa folha à parte. Do 1º ao 4º ano, marcam na própria prova.' },
   { termo: 'Lançar respostas', definicao: 'Passar para o site a letra que cada aluno marcou. O site corrige sozinho.' },
   { termo: 'Em branco', definicao: 'O aluno não marcou nenhuma alternativa na questão.' },
   { termo: 'Rasurada', definicao: 'O aluno marcou mais de uma alternativa na questão.' },
   { termo: 'Prova adaptada', definicao: 'O aluno fez uma versão diferente da prova. Ele fica fora das médias.' },
-  { termo: 'Faixa de desempenho', definicao: 'Abaixo do básico, Básico, Adequado ou Avançado, conforme o número de acertos.' },
+  { termo: 'Acerto', definicao: 'A parte das questões que o aluno acertou, em porcentagem. Questões anuladas não contam.' },
+  { termo: 'Faixa de acerto', definicao: 'Os gráficos agrupam os alunos de 20 em 20 pontos: menos de 20%, de 20% a 39%, e assim por diante, até 80% ou mais.' },
   { termo: 'Habilidade da BNCC', definicao: 'O que a questão avalia, segundo a Base Nacional Comum Curricular.' },
   { termo: 'Aluno novo', definicao: 'Quem entrou no colégio no mesmo ano da avaliação.' },
+  { termo: 'Link de acesso', definicao: 'O endereço que chega por e-mail e entra direto na sua conta, sem senha. Não expira: guarde o e-mail e não o encaminhe.' },
 ]
 
 function CartaoContato({ titulo, contato, papel }: { titulo: string; contato: Contato | null; papel: string }) {
@@ -71,8 +87,10 @@ function CartaoContato({ titulo, contato, papel }: { titulo: string; contato: Co
 }
 
 export function AjudaConteudo({ db, perfil }: { db: Db; perfil: Perfil }) {
-  const solar = responsavelSolar(db)
-  const coordenacao = perfil.papel !== 'solar' ? contatoDoColegio(db, perfil.colegioId) : null
+  const colegio = perfil.papel !== 'solar' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
+  // Quem cuida do colégio na Solar atende primeiro; sem ninguém, a pessoa responsável pela equipe.
+  const solar = (colegio && membroSolarDoColegio(db, colegio)) ?? responsavelSolar(db)
+  const coordenacao = colegio ? contatoDoColegio(db, colegio.id) : null
   return (
     <div className="ajuda">
       <div className="ajuda-contatos">

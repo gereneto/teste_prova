@@ -23,7 +23,7 @@ export function FormularioContato(props: {
     e.preventDefault()
     const limpo = { nome: contato.nome.trim().replace(/\s+/g, ' '), email: contato.email.trim().toLowerCase(), telefone: contato.telefone.trim() }
     if (!limpo.nome) return setErro('Informe o nome.')
-    if (!limpo.email) return setErro('Informe o e-mail: na versão final, é com ele que a pessoa entra no site.')
+    if (!limpo.email) return setErro('Informe o e-mail: é para ele que vai o link de acesso ao site.')
     if (!EMAIL_VALIDO.test(limpo.email)) return setErro('Esse e-mail não parece válido. Confira.')
     props.aoSalvar(limpo)
   }
@@ -45,6 +45,10 @@ export function FormularioContato(props: {
           <input type="tel" value={contato.telefone} onChange={(e) => mudar({ telefone: e.target.value })} placeholder="(19) 3333-4444" />
         </label>
       </div>
+      {props.inicial && contato.email.trim().toLowerCase() !== props.inicial.email && EMAIL_VALIDO.test(contato.email.trim()) && (
+        <p className="campo-ajuda">Ao salvar, o novo e-mail recebe um link de acesso, e o link enviado antes deixa de valer.</p>
+      )}
+      {!props.inicial && <p className="campo-ajuda">A pessoa recebe neste e-mail o link de acesso ao site, que entra direto na conta dela.</p>}
       {props.extra}
       {erro && <p className="erro-campo">{erro}</p>}
       <div className="form-acoes">

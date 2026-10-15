@@ -1,5 +1,6 @@
 import { Crown, Pencil, Plus, UserMinus } from 'lucide-react'
 import { useState } from 'react'
+import { AvisoEnvio, BotaoReenviar } from '../../components/AvisoEnvio'
 import { FormularioContato } from '../../components/FormularioContato'
 import { Aviso, Cabecalho, Cartao, Confirmacao, Selo } from '../../components/ui'
 import { equipeDoColegio, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
@@ -16,6 +17,7 @@ export default function EquipeColegio() {
   const [editandoId, setEditandoId] = useState<Id | null>(null)
   const [tirando, setTirando] = useState<Coordenador | null>(null)
   const [passando, setPassando] = useState<Coordenador | null>(null)
+  const [enviado, setEnviado] = useState<string | null>(null)
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   if (!perfil || !colegio) return null
   const eu = pessoaDoPerfil(db, perfil)
@@ -48,7 +50,7 @@ export default function EquipeColegio() {
           titulo="Incluir pessoa na coordenação"
           rotuloSalvar="Incluir na equipe"
           aoSalvar={(contato) => {
-            adicionarCoordenador(colegio.id, contato)
+            setEnviado(adicionarCoordenador(colegio.id, contato).emailEnviado)
             setIncluindo(false)
           }}
           aoCancelar={() => setIncluindo(false)}
@@ -56,6 +58,7 @@ export default function EquipeColegio() {
       )}
 
       <Cartao>
+        <AvisoEnvio email={enviado} aoFechar={() => setEnviado(null)} />
         <ul className="lista-pessoas">
           {equipe.map((pessoa) =>
             editandoId === pessoa.id ? (
@@ -64,7 +67,7 @@ export default function EquipeColegio() {
                   inicial={pessoa}
                   rotuloSalvar="Salvar"
                   aoSalvar={(contato) => {
-                    editarCoordenador(pessoa.id, contato)
+                    setEnviado(editarCoordenador(pessoa.id, contato).emailEnviado)
                     setEditandoId(null)
                   }}
                   aoCancelar={() => setEditandoId(null)}
@@ -83,6 +86,7 @@ export default function EquipeColegio() {
                     <button className="btn btn-pequeno btn-fantasma" onClick={() => setEditandoId(pessoa.id)}>
                       <Pencil size={14} aria-hidden /> Editar
                     </button>
+                    {!(eu?.papel === 'coordenacao' && eu.coordenador.id === pessoa.id) && <BotaoReenviar tipo="coordenador" id={pessoa.id} aoEnviar={setEnviado} />}
                     {!pessoa.responsavel && (
                       <>
                         <button className="btn btn-pequeno btn-fantasma" onClick={() => setPassando(pessoa)}>
