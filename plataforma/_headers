@@ -1,0 +1,13 @@
+# Cabeçalhos da Prova Solar em plataformasolar.com.br/prova/ (PLANO.md da plataforma, §3 e §11).
+# O build:plataforma copia este arquivo para a raiz de dist-plataforma/, que é o que o Worker publica.
+# CSP só em Report-Only até a PdC 4 (etapa 3): por enquanto /prova/ serve a demonstração, que
+# ainda guarda PDFs no navegador e abre e-mails simulados.
+/*
+  Content-Security-Policy-Report-Only: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
+  X-Robots-Tag: noindex
+/prova/assets/*
+  Cache-Control: public, max-age=31536000, immutable
