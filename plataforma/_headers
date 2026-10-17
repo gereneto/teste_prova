@@ -1,4 +1,4 @@
-# Cabeçalhos da Prova Solar em plataformasolar.com.br/prova/ (PLANO.md da plataforma, §3 e §11).
+# Cabeçalhos da Prova Solar em plataformasolar.org.br/prova/ (PLANO.md da plataforma, §3 e §11).
 # O build:plataforma copia este arquivo para a raiz de dist-plataforma/, que é o que o Worker publica.
 # CSP só em Report-Only até a PdC 4 (etapa 3): por enquanto /prova/ serve a demonstração, que
 # ainda guarda PDFs no navegador e abre e-mails simulados.
