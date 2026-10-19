@@ -2,7 +2,11 @@
 # O build:plataforma copia este arquivo para a raiz de dist-plataforma/, que é o que o Worker publica.
 # CSP só em Report-Only até a PdC 4 (etapa 3): por enquanto /prova/ serve a demonstração, que
 # ainda guarda PDFs no navegador e abre e-mails simulados.
+# Cache-Control com no-transform em tudo: com ele a Cloudflare não mexe nas respostas (não injeta o
+# beacon do Web Analytics, não ofusca e-mails, não põe Rocket Loader). Regra que muda o Cache-Control
+# zera a geral com "! Cache-Control" antes de definir a sua.
 /*
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
   Content-Security-Policy-Report-Only: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -10,4 +14,5 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()
   X-Robots-Tag: noindex
 /prova/assets/*
-  Cache-Control: public, max-age=31536000, immutable
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform
