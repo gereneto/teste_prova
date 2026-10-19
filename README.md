@@ -130,7 +130,7 @@ npm test         # testes da correção, das estatísticas, da lista de alunos, 
 npm run build    # gera a versão publicada em dist/
 ```
 
-O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio para a branch `main` roda os testes, compila o site e publica no GitHub Pages (`.github/workflows/publicar.yml`), em <https://solar-colegios.github.io/prova-solar/>. Para isso, o Pages do repositório precisa estar com a origem “GitHub Actions” (Settings › Pages › Build and deployment). A cópia pública <https://github.com/gereneto/teste_prova> publica o mesmo site em <https://gereneto.github.io/teste_prova/>. O site definitivo vai para a Cloudflare, com domínio próprio.
+O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio para a branch `main` roda os testes, compila o site e publica no GitHub Pages (`.github/workflows/publicar.yml`), em <https://solar-colegios.github.io/prova-solar/>. Para isso, o Pages do repositório precisa estar com a origem “GitHub Actions” (Settings › Pages › Build and deployment). A cópia pública <https://github.com/gereneto/teste_prova> publica o mesmo site em <https://gereneto.github.io/teste_prova/>. O site definitivo é publicado pela Cloudflare em <https://plataformasolar.org.br/prova/>: a cada envio para a `main`, o Workers Builds roda `npm run build:plataforma` (saída em `dist-plataforma/prova/`) e `npx wrangler deploy` (`wrangler.jsonc`).
 
 | Pasta ou arquivo | O que tem |
 |---|---|
