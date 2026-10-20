@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
 import { AvisoEnvio, BotaoReenviar } from '../../components/AvisoEnvio'
 import { FormularioContato } from '../../components/FormularioContato'
-import { Cabecalho, Cartao, Selo, SeloStatus, Vazio } from '../../components/ui'
+import { Cabecalho, Cartao, Confirmacao, Selo, SeloStatus, Vazio } from '../../components/ui'
 import {
   avaliacaoAtual,
   cadernosDaSerie,
@@ -17,12 +17,13 @@ import {
 } from '../../lib/consultas'
 import { progressoAg } from '../../lib/rede'
 import { dataCurta, plural, turmaNome } from '../../lib/formato'
-import { definirMembroSolarDoColegio, definirResponsavelDoColegio, editarColegio } from '../../store/acoes'
+import { definirMembroSolarDoColegio, definirResponsavelDoColegio, editarColegio, tornarResponsavel } from '../../store/acoes'
 import { useDb } from '../../store/db'
 import { useRede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import { FormularioColegio } from './Colegios'
 import { PLATAFORMA } from '../../plataforma/modo'
+import type { Coordenador } from '../../types'
 
 export default function ColegioDetalhe() {
   const { colegioId = '' } = useParams()
@@ -31,6 +32,7 @@ export default function ColegioDetalhe() {
   const perfil = usePerfil()
   const [editando, setEditando] = useState(false)
   const [trocando, setTrocando] = useState(false)
+  const [escolhida, setEscolhida] = useState<Coordenador | null>(null)
   // Ao cadastrar o colégio já com a pessoa responsável, a página abre avisando do e-mail enviado.
   const location = useLocation()
   const [enviado, setEnviado] = useState<string | null>((location.state as { enviado?: string | null } | null)?.enviado ?? null)
@@ -105,12 +107,12 @@ export default function ColegioDetalhe() {
 
       <Cartao
         titulo="Coordenação"
-        sub={`A pessoa responsável é definida ${membroSolar ? `por ${membroSolar.nome}, da Solar,` : 'pela Solar'} e cadastra as demais pessoas da equipe do colégio. Cada pessoa cadastrada recebe por e-mail ${PLATAFORMA ? 'um convite' : 'o link de acesso'}.`}
+        sub={`A pessoa responsável é definida ${membroSolar ? `por ${membroSolar.nome}, da Solar,` : 'pela Solar'} e cadastra as demais pessoas da equipe do colégio. Para trocar, escolha outra pessoa da equipe ou cadastre uma nova, que recebe por e-mail ${PLATAFORMA ? 'um convite' : 'o link de acesso'}.`}
         acoes={
           defineResponsavel &&
           !trocando && (
             <button className="btn btn-pequeno" onClick={() => setTrocando(true)}>
-              <Crown size={15} aria-hidden /> {responsavel ? 'Trocar responsável' : 'Definir responsável'}
+              <Crown size={15} aria-hidden /> {responsavel ? 'Nova pessoa responsável' : 'Definir responsável'}
             </button>
           )
         }
@@ -118,7 +120,7 @@ export default function ColegioDetalhe() {
         {trocando && (
           <FormularioContato
             titulo={responsavel ? 'Nova pessoa responsável' : 'Pessoa responsável pela coordenação'}
-            rotuloSalvar={responsavel ? 'Trocar responsável' : 'Definir responsável'}
+            rotuloSalvar={responsavel ? 'Tornar responsável' : 'Definir responsável'}
             extra={responsavel && <p className="texto-2 pequeno">{responsavel.nome} continua na equipe da coordenação, sem o papel de responsável.</p>}
             aoSalvar={(contato) => {
               setEnviado(definirResponsavelDoColegio(colegio.id, contato).emailEnviado)
@@ -139,6 +141,11 @@ export default function ColegioDetalhe() {
                   <p className="texto-2 pequeno">{[c.email, c.telefone].filter(Boolean).join(' · ')}</p>
                 </div>
                 {defineResponsavel && c.responsavel && <BotaoReenviar tipo="coordenador" id={c.id} aoEnviar={setEnviado} />}
+                {defineResponsavel && !c.responsavel && (
+                  <button className="btn btn-pequeno btn-fantasma" onClick={() => setEscolhida(c)}>
+                    <Crown size={14} aria-hidden /> Tornar responsável
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -146,6 +153,22 @@ export default function ColegioDetalhe() {
           <p className="texto-2">Ainda não há ninguém na coordenação deste colégio.</p>
         )}
       </Cartao>
+
+      <Confirmacao
+        titulo={escolhida ? `Tornar ${escolhida.nome} responsável pela coordenação?` : ''}
+        aberta={escolhida !== null}
+        rotuloConfirmar="Tornar responsável"
+        aoConfirmar={() => {
+          if (escolhida) tornarResponsavel(colegio.id, escolhida.id)
+          setEscolhida(null)
+        }}
+        aoFechar={() => setEscolhida(null)}
+      >
+        <p>
+          {escolhida?.nome} passa a incluir e tirar pessoas da equipe do colégio.
+          {responsavel && ` ${responsavel.nome} continua na coordenação, com as mesmas permissões, mas sem esse papel.`}
+        </p>
+      </Confirmacao>
 
       <Cartao titulo="Turmas" sub="Cadastradas pela coordenação. A Solar vê os resultados de cada turma, sem a lista de alunos, que fica com o colégio.">
         {!turmas.length ? (

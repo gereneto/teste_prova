@@ -266,14 +266,16 @@ export function removerCoordenador(id: Id) {
   servidor()?.rpc('plataforma', 'desativar_vinculo', { pessoa: id, colegio: colegioId, papel: 'coordenacao' })
 }
 
-/** O responsável passa o papel para outra pessoa da equipe e continua na equipe sem ele. */
-export function passarResponsabilidade(novoResponsavelId: Id) {
-  const colegioId = colegioDoPerfil() ?? getDb().coordenadores.find((c) => c.id === novoResponsavelId)?.colegioId ?? null
+/**
+ * A Solar escolhe outra pessoa da coordenação como responsável; quem era continua na equipe, sem o papel.
+ * A coordenação não passa a responsabilidade (pedido de 2026-10-20).
+ */
+export function tornarResponsavel(colegioId: Id, novoResponsavelId: Id) {
   atualizar((db) => {
     const novo = db.coordenadores.find((c) => c.id === novoResponsavelId && c.colegioId === colegioId)
     if (!novo) return
-    db.coordenadores.filter((c) => c.colegioId === novo.colegioId).forEach((c) => (c.responsavel = c.id === novo.id))
-    registrar(db, `Passou a responsabilidade pela coordenação para ${novo.nome}.`, { colegioId: novo.colegioId })
+    db.coordenadores.filter((c) => c.colegioId === colegioId).forEach((c) => (c.responsavel = c.id === novo.id))
+    registrar(db, `Definiu ${novo.nome} como responsável pela coordenação.`, { colegioId })
   })
   servidor()?.rpc('plataforma', 'passar_responsabilidade_colegio', { colegio: colegioId, pessoa: novoResponsavelId })
 }

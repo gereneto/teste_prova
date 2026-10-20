@@ -12,7 +12,7 @@ const turma: Turma = { id: 't', colegioId: 'c1', anoLetivo: 2026, serie: 3, nome
 
 function resultado(cad: Caderno, id: string, marcas: string, col: Colegio): ResultadoAluno {
   return {
-    aluno: { id, turmaId: turma.id, numero: '1', iniciais: 'A.B.', sexo: 'F', anoIngresso: 2024, ativo: true },
+    aluno: { id, turmaId: turma.id, numero: '1', iniciais: 'AB', sexo: 'F', anoIngresso: 2024, ativo: true },
     turma,
     colegio: col,
     caderno: cad,
@@ -25,14 +25,14 @@ function resultado(cad: Caderno, id: string, marcas: string, col: Colegio): Resu
 
 describe('iniciais', () => {
   it('tira as iniciais do nome, sem partículas nem acentos', () => {
-    expect(iniciaisDoNome('Ana Clara de Souza')).toBe('A.C.S.')
-    expect(iniciaisDoNome('Ícaro dos Santos e Silva')).toBe('I.S.S.')
+    expect(iniciaisDoNome('Ana Clara de Souza')).toBe('ACS')
+    expect(iniciaisDoNome('Ícaro dos Santos e Silva')).toBe('ISS')
   })
 
-  it('põe em maiúsculas o que foi digitado, no formato A.C.S.', () => {
-    expect(formatarIniciais('acs')).toBe('A.C.S.')
-    expect(formatarIniciais('a. c. s')).toBe('A.C.S.')
-    expect(formatarIniciais('ÉM')).toBe('E.M.')
+  it('põe em maiúsculas o que foi digitado, só com as letras, sem pontos', () => {
+    expect(formatarIniciais('acs')).toBe('ACS')
+    expect(formatarIniciais('a. c. s')).toBe('ACS')
+    expect(formatarIniciais('ÉM')).toBe('EM')
     expect(formatarIniciais(' . ')).toBe('')
   })
 })
@@ -44,7 +44,7 @@ describe('alunos', () => {
   })
 
   it('resume os dados que faltam', () => {
-    const base = { numero: '1', iniciais: 'A.B.', sexo: 'F' as const, anoIngresso: 2024 }
+    const base = { numero: '1', iniciais: 'AB', sexo: 'F' as const, anoIngresso: 2024 }
     expect(descreverFaltando([base])).toBeNull()
     expect(descreverFaltando([base, { ...base, sexo: null }, { ...base, sexo: null, anoIngresso: null }])).toBe(
       '2 alunos com dados faltando: 2 sem sexo e 1 sem ano de entrada',

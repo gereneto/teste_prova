@@ -46,7 +46,7 @@ describe('dados de exemplo', () => {
 
   it('guardam só as iniciais dos alunos', () => {
     for (const aluno of db.alunos) {
-      expect(aluno.iniciais).toMatch(/^([A-Z]\.){1,6}$/)
+      expect(aluno.iniciais).toMatch(/^[A-Z]{1,6}$/)
       expect(Object.keys(aluno)).not.toContain('nome')
     }
   })
@@ -175,6 +175,6 @@ describe('dados de exemplo', () => {
     expect(avisos.filter((e) => !e.ciente)).toHaveLength(2)
     const inclusao = avisos.find((e) => e.tipo === 'inclusao')!
     expect(lancamentoDe(db, 'cad-2026-3-pt', inclusao.turmaId!)!.respostas[inclusao.alunoId!]).toBeDefined()
-    expect(inclusao.texto).toMatch(/^Incluiu o nº \d+ \(L\.M\.R\.\) na lista: sexo feminino e entrou no colégio em 2026\.$/)
+    expect(inclusao.texto).toMatch(/^Incluiu o nº \d+ \(LMR\) na lista: sexo feminino e entrou no colégio em 2026\.$/)
   })
 })

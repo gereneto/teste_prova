@@ -18,7 +18,7 @@ describe('lista de alunos', () => {
     comoCoordenacao()
     const id = novoId('alu')
     criarAluno(turmaId, id, { iniciais: 'acs' })
-    expect(getDb().alunos.find((a) => a.id === id)).toMatchObject({ numero: '', iniciais: 'A.C.S.', sexo: null, anoIngresso: null, ativo: true })
+    expect(getDb().alunos.find((a) => a.id === id)).toMatchObject({ numero: '', iniciais: 'ACS', sexo: null, anoIngresso: null, ativo: true })
   })
 
   it('avisa a coordenação do que o professor mudou, num aviso só por aluno e por dia', () => {
@@ -30,7 +30,7 @@ describe('lista de alunos', () => {
     atualizarAluno(id, { sexo: 'M', anoIngresso: 2026 })
     const avisos = getDb().historico.filter((e) => e.avisarCoordenacao)
     expect(avisos).toHaveLength(avisosAntes + 1)
-    expect(avisos.at(-1)!.texto).toBe('Incluiu o nº 18 (M.S.O.) na lista: sexo masculino e entrou no colégio em 2026.')
+    expect(avisos.at(-1)!.texto).toBe('Incluiu o nº 18 (MSO) na lista: sexo masculino e entrou no colégio em 2026.')
   })
 
   it('junta as correções do mesmo aluno e some com o aviso se tudo voltar ao que era', () => {

@@ -162,8 +162,8 @@ describe('as mesmas somas do banco (cenário do 09_prova_painel)', () => {
     colegios: [{ id: 'A', nome: 'A', cidade: '', uf: '', membroSolarId: null }, { id: 'B', nome: 'B', cidade: '', uf: '', membroSolarId: null }],
     turmas: [turma('2A25', 'A', 2025, 2, 'A'), turma('3A', 'A', 2026, 3, 'A'), turma('3B', 'A', 2026, 3, 'B'), turma('B3A', 'B', 2026, 3, 'A')],
     alunos: [
-      aluno('a1', '3A', '1', 'A.A.', 'F', 2024), aluno('a2', '3A', '2', 'B.B.', 'M', 2025), aluno('a3', '3A', '3', 'C.C.', 'F', 2026),
-      aluno('a4', '3B', '1', 'D.D.', null, 2023), aluno('b1', 'B3A', '1', 'E.E.', 'M', 2026),
+      aluno('a1', '3A', '1', 'AA', 'F', 2024), aluno('a2', '3A', '2', 'BB', 'M', 2025), aluno('a3', '3A', '3', 'CC', 'F', 2026),
+      aluno('a4', '3B', '1', 'DD', null, 2023), aluno('b1', 'B3A', '1', 'EE', 'M', 2026),
     ],
     avaliacoes: [
       { id: 'av25', titulo: '2025', anoLetivo: 2025, aplicacaoInicio: '2025-11-17', aplicacaoFim: '2025-11-21', prazoLancamento: '2025-12-05' },

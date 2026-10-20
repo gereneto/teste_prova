@@ -65,7 +65,7 @@ Nesta versão os e-mails não são enviados: eles ficam guardados e aparecem em 
 
 ## O que esta versão faz
 
-- **Alunos só pelas iniciais.** O aluno aparece como “Nº 7 · A.C.S.”, com o número de chamada do colégio, que pode ter letras. Cada aluno tem ainda sexo e ano de entrada no colégio. Casas em branco são aceitas e lembradas depois; números repetidos e iniciais repetidas geram um aviso.
+- **Alunos só pelas iniciais.** O aluno aparece como “Nº 7 · ACS” (iniciais só com as letras, sem pontos), com o número de chamada do colégio, que pode ter letras. Cada aluno tem ainda sexo e ano de entrada no colégio. Casas em branco são aceitas e lembradas depois; números repetidos e iniciais repetidas geram um aviso.
 - **Avaliação anual de Português e Matemática.** Uma avaliação por ano, com uma prova para cada ano: 16 questões no 1º e no 2º ano, 20 do 3º ao 5º. Só o 5º ano usa folha de respostas. Os dados de exemplo têm a de 2025 (encerrada) e a de 2026 (em lançamento).
 - **Resultados em gráficos.** Alunos por faixa de acerto (menos de 20%, 20% a 39%, 40% a 59%, 60% a 79%, 80% ou mais), acerto por disciplina, por questão, por ano e por colégio, e a comparação entre novos e antigos e entre meninas e meninos. As cores vão do vermelho (menos acertos) ao azul (mais acertos).
 - **Professor:**

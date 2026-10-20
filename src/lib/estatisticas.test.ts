@@ -33,7 +33,7 @@ const caderno = (questoes: Questao[]): Caderno => ({
   pdf: null,
 })
 
-const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', numero: '1', iniciais: 'A.B.', sexo: 'F', anoIngresso, ativo: true })
+const aluno = (id: string, anoIngresso: number | null = 2024): Aluno => ({ id, turmaId: 't', numero: '1', iniciais: 'AB', sexo: 'F', anoIngresso, ativo: true })
 const turma: Turma = { id: 't', colegioId: 'c', anoLetivo: 2026, serie: 3, nome: 'A', turno: 'Manhã', professorIds: [] }
 const colegio: Colegio = { id: 'c', nome: 'C', cidade: '', uf: '', membroSolarId: null }
 

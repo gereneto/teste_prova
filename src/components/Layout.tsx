@@ -58,11 +58,11 @@ function abasDo(db: Db, perfil: Perfil): Aba[] {
     return [
       { para: '/coordenacao', rotulo: 'Início', fim: true },
       { para: '/coordenacao/avisos', rotulo: 'Avisos', contador: avisosPendentes(db, perfil.colegioId).length },
-      { para: '/coordenacao/resultados', rotulo: 'Resultados' },
+      { para: '/coordenacao/equipe', rotulo: 'Equipe' },
+      { para: '/coordenacao/professores', rotulo: 'Professores' },
       { para: '/coordenacao/turmas', rotulo: 'Turmas e alunos' },
       { para: '/coordenacao/provas', rotulo: 'Provas' },
-      { para: '/coordenacao/professores', rotulo: 'Professores' },
-      { para: '/coordenacao/equipe', rotulo: 'Equipe' },
+      { para: '/coordenacao/resultados', rotulo: 'Resultados' },
     ]
   }
   return [

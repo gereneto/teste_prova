@@ -86,7 +86,7 @@ export interface Aluno {
   turmaId: Id
   /** Número (ou código) de chamada, como o colégio usa. É ele que liga a prova em papel ao aluno no site. */
   numero: string
-  /** Só as iniciais, em maiúsculas, como "A.C.S.": o site não guarda o nome completo. */
+  /** Só as iniciais, em maiúsculas e sem pontos, como "ACS": o site não guarda o nome completo. */
   iniciais: string
   sexo: Sexo | null
   /** Ano em que entrou no colégio (null = não informado). Separa alunos novos e antigos nos resultados. */
