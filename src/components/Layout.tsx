@@ -67,10 +67,10 @@ function abasDo(db: Db, perfil: Perfil): Aba[] {
   }
   return [
     { para: '/solar', rotulo: 'Início', fim: true },
+    { para: '/solar/equipe', rotulo: 'Equipe' },
     { para: '/solar/colegios', rotulo: 'Colégios' },
     { para: '/solar/avaliacoes', rotulo: 'Avaliações' },
     { para: '/solar/resultados', rotulo: 'Resultados' },
-    { para: '/solar/equipe', rotulo: 'Equipe' },
     { para: '/solar/configuracoes', rotulo: 'Configurações' },
   ]
 }
