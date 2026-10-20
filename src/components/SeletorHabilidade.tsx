@@ -2,14 +2,14 @@ import { X } from 'lucide-react'
 import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { buscarHabilidade, habilidadesDoAno, type Habilidade } from '../data/bncc'
 import { normalizar } from '../lib/formato'
-import { DISCIPLINAS_DA_PROVA, type Serie } from '../types'
+import type { Disciplina, Serie } from '../types'
 
 const MAXIMO_OPCOES = 40
 
 /** Campo de busca das habilidades da BNCC do ano, por código ou por texto. */
 export function SeletorHabilidade(props: {
   serie: Serie
-  disciplina: string
+  disciplina: Disciplina
   valor: string | null
   aoMudar: (habilidade: Habilidade | null) => void
 }) {
@@ -22,13 +22,13 @@ export function SeletorHabilidade(props: {
 
   const opcoes = useMemo(() => {
     const termos = normalizar(busca).split(/\s+/).filter(Boolean)
-    return habilidadesDoAno(serie)
-      .filter((h) => DISCIPLINAS_DA_PROVA.includes(h.componente))
+    // Cada prova é de uma disciplina só: as habilidades são as dela.
+    return habilidadesDoAno(serie, disciplina)
       .filter((h) => {
         const texto = normalizar(`${h.codigo} ${h.componente} ${h.descricao} ${h.objeto}`)
         return termos.every((t) => texto.includes(t))
       })
-      .sort((a, b) => Number(b.componente === disciplina) - Number(a.componente === disciplina) || a.codigo.localeCompare(b.codigo))
+      .sort((a, b) => a.codigo.localeCompare(b.codigo))
       .slice(0, MAXIMO_OPCOES)
   }, [serie, disciplina, busca])
 

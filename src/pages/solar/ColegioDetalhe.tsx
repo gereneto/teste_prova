@@ -4,11 +4,9 @@ import { Link, useLocation, useParams } from 'react-router'
 import { AvisoEnvio, BotaoReenviar } from '../../components/AvisoEnvio'
 import { FormularioContato } from '../../components/FormularioContato'
 import { Cabecalho, Cartao, Selo, SeloStatus, Vazio } from '../../components/ui'
-import { camposFaltando } from '../../lib/alunos'
 import {
-  alunosAtivos,
   avaliacaoAtual,
-  cadernoDaSerie,
+  cadernosDaSerie,
   equipeDoColegio,
   membroSolarDoColegio,
   nomesProfessores,
@@ -17,16 +15,18 @@ import {
   podeDefinirResponsavel,
   turmasDoColegio,
 } from '../../lib/consultas'
-import { ehNovo, progressoDe } from '../../lib/estatisticas'
+import { progressoAg } from '../../lib/rede'
 import { dataCurta, plural, turmaNome } from '../../lib/formato'
 import { definirMembroSolarDoColegio, definirResponsavelDoColegio, editarColegio } from '../../store/acoes'
 import { useDb } from '../../store/db'
+import { useRede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import { FormularioColegio } from './Colegios'
 
 export default function ColegioDetalhe() {
   const { colegioId = '' } = useParams()
   const db = useDb()
+  const rede = useRede()
   const perfil = usePerfil()
   const [editando, setEditando] = useState(false)
   const [trocando, setTrocando] = useState(false)
@@ -42,7 +42,7 @@ export default function ColegioDetalhe() {
   const quemPodeCuidar = db.equipeSolar.filter((m) => m.papel !== 'visualizacao')
 
   const turmas = turmasDoColegio(db, colegio.id)
-  const totalAlunos = turmas.reduce((s, t) => s + alunosAtivos(db, t.id).length, 0)
+  const totalAlunos = turmas.reduce((s, t) => s + (rede.cadastroDe(t.id)?.alunos ?? 0), 0)
   const equipe = equipeDoColegio(db, colegio.id)
   const responsavel = equipe.find((c) => c.responsavel)
   const avaliacao = avaliacaoAtual(db)
@@ -159,25 +159,36 @@ export default function ColegioDetalhe() {
                   <th>Professores</th>
                   <th className="num">Alunos</th>
                   <th className="num">Novos no colégio</th>
-                  {avaliacao && <th>Lançamento</th>}
+                  {avaliacao && <th>Lançamento (Português · Matemática)</th>}
                 </tr>
               </thead>
               <tbody>
                 {turmas.map((turma) => {
-                  const alunos = alunosAtivos(db, turma.id)
-                  const faltando = alunos.filter((a) => camposFaltando(a).length).length
-                  const caderno = avaliacao ? cadernoDaSerie(db, avaliacao.id, turma.serie) : undefined
+                  const cadastro = rede.cadastroDe(turma.id)
+                  const cadernos = avaliacao ? cadernosDaSerie(db, avaliacao.id, turma.serie) : []
                   return (
                     <tr key={turma.id}>
-                      <td>{caderno ? <Link to={`/solar/resultados/${caderno.id}/${turma.id}`}>{turmaNome(turma)}</Link> : turmaNome(turma)}</td>
+                      <td>{cadernos.length ? <Link to={`/solar/resultados/${cadernos[0].id}/${turma.id}`}>{turmaNome(turma)}</Link> : turmaNome(turma)}</td>
                       <td>{turma.turno}</td>
                       <td>{nomesProfessores(db, turma)}</td>
                       <td className="num">
-                        {alunos.length}
-                        {faltando > 0 && <span className="texto-2 bloco pequeno">{faltando} com dados faltando</span>}
+                        {cadastro?.alunos ?? 0}
+                        {!!cadastro?.incompletos && <span className="texto-2 bloco pequeno">{cadastro.incompletos} com dados faltando</span>}
                       </td>
-                      <td className="num">{alunos.filter((a) => ehNovo(a, turma.anoLetivo)).length}</td>
-                      {avaliacao && <td>{caderno ? <SeloStatus status={progressoDe(db, caderno, turma.id).status} /> : <span className="texto-2">sem prova</span>}</td>}
+                      <td className="num">{cadastro?.novos ?? 0}</td>
+                      {avaliacao && (
+                        <td>
+                          {cadernos.length ? (
+                            <span className="selos-provas">
+                              {cadernos.map((c) => (
+                                <SeloStatus key={c.id} status={progressoAg(rede.agDe(c.id, turma.id)).status} />
+                              ))}
+                            </span>
+                          ) : (
+                            <span className="texto-2">sem prova</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   )
                 })}

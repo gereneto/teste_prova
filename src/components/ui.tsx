@@ -1,7 +1,7 @@
 import { ArrowLeft, CircleAlert, CircleCheck, CircleHelp, HeartHandshake, Info, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { contarFaixas, faixaDe, NOMES_FAIXAS, type ResultadoAluno, type StatusLancamento } from '../lib/estatisticas'
+import { faixaDe, NOMES_FAIXAS, type StatusLancamento } from '../lib/estatisticas'
 import { pct, plural } from '../lib/formato'
 
 /** Cabeçalho de página no formato SectionHeading do design system: rótulo, título e subtítulo. */
@@ -132,8 +132,8 @@ export function MiniBarra({ valor }: { valor: number }) {
 }
 
 /** Quantos alunos ficaram em cada faixa de acerto (de 20 em 20 pontos), em colunas. */
-export function Histograma({ resultados }: { resultados: ResultadoAluno[] }) {
-  const contagem = contarFaixas(resultados)
+/** Alunos por faixa de acerto. A contagem vem de contarFaixas (alunos) ou de faixasAg (somas por turma). */
+export function Histograma({ contagem }: { contagem: readonly number[] }) {
   const maior = Math.max(1, ...contagem)
   const total = contagem.reduce((s, v) => s + v, 0)
   return (
@@ -159,44 +159,28 @@ export function Histograma({ resultados }: { resultados: ResultadoAluno[] }) {
 }
 
 /** Acerto em cada questão, em colunas de 0 a 100%, com uma linha na metade. */
-export function ColunasPorQuestao({ itens }: { itens: { numero: number; valor: number | null; disciplina?: string }[] }) {
+/** Percentual de acerto de cada questão de uma prova (uma disciplina só). */
+export function ColunasPorQuestao({ itens }: { itens: { numero: number; valor: number | null }[] }) {
   return (
-    <>
-      <div className="colunas-questoes-rolagem">
-        <figure className="colunas-questoes" style={{ minWidth: `${itens.length * 34}px` }}>
-          <div className="colunas-questoes-area">
-            <span className="colunas-questoes-metade" aria-hidden />
-            {itens.map((item) => (
-              <div key={item.numero} className="colunas-questoes-coluna" role="img" aria-label={`Questão ${item.numero}: ${pct(item.valor)} de acerto`}>
-                <span className="colunas-questoes-valor">{item.valor == null ? '—' : Math.round(item.valor)}</span>
-                {item.valor != null && <span className={`colunas-questoes-barra faixa-${faixaDe(item.valor)}`} style={{ height: `${Math.max(1, item.valor)}%` }} />}
-              </div>
-            ))}
-          </div>
-          <div className="colunas-questoes-numeros" aria-hidden>
-            {itens.map((item) => (
-              <span key={item.numero} className={item.disciplina === 'Matemática' ? 'matematica' : ''}>
-                {item.numero}
-              </span>
-            ))}
-          </div>
-        </figure>
-      </div>
-      {itens.some((i) => i.disciplina) && <p className="colunas-questoes-disciplinas texto-2 pequeno">{questoesPorDisciplina(itens)}</p>}
-    </>
+    <div className="colunas-questoes-rolagem">
+      <figure className="colunas-questoes" style={{ minWidth: `${itens.length * 34}px` }}>
+        <div className="colunas-questoes-area">
+          <span className="colunas-questoes-metade" aria-hidden />
+          {itens.map((item) => (
+            <div key={item.numero} className="colunas-questoes-coluna" role="img" aria-label={`Questão ${item.numero}: ${pct(item.valor)} de acerto`}>
+              <span className="colunas-questoes-valor">{item.valor == null ? '—' : Math.round(item.valor)}</span>
+              {item.valor != null && <span className={`colunas-questoes-barra faixa-${faixaDe(item.valor)}`} style={{ height: `${Math.max(1, item.valor)}%` }} />}
+            </div>
+          ))}
+        </div>
+        <div className="colunas-questoes-numeros" aria-hidden>
+          {itens.map((item) => (
+            <span key={item.numero}>{item.numero}</span>
+          ))}
+        </div>
+      </figure>
+    </div>
   )
-}
-
-/** "Questões 1 a 10: Português · 11 a 20: Matemática." */
-function questoesPorDisciplina(itens: { numero: number; disciplina?: string }[]): string {
-  const blocos: { disciplina: string; de: number; ate: number }[] = []
-  for (const item of itens) {
-    const ultimo = blocos[blocos.length - 1]
-    if (ultimo && ultimo.disciplina === (item.disciplina ?? '')) ultimo.ate = item.numero
-    else blocos.push({ disciplina: item.disciplina ?? '', de: item.numero, ate: item.numero })
-  }
-  const partes = blocos.map((b) => `${b.de === b.ate ? b.de : `${b.de} a ${b.ate}`}: ${b.disciplina || 'sem disciplina'}`)
-  return `Questões ${partes.join(' · ')}. As de Matemática têm o número em destaque.`
 }
 
 /** Barra fina com a parte dos alunos em cada faixa de acerto, para tabelas. */

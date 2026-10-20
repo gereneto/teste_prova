@@ -1,7 +1,8 @@
-"""Gera os PDFs fictícios das provas usadas nos dados de exemplo.
+"""Gera os PDFs fictícios das provas usadas nos dados de exemplo: uma prova de Português e outra de
+Matemática para cada ano (decisão de 2026-10-19).
 
 Uso: python scripts/gerar_pdfs_exemplo.py
-Saída: public/exemplos/prova-exemplo-{1..5}ano.pdf
+Saída: public/exemplos/prova-exemplo-{1..5}ano-{pt,mat}.pdf, e os tamanhos para src/data/seed.ts
 """
 from pathlib import Path
 
@@ -11,15 +12,18 @@ from reportlab.pdfgen import canvas
 
 DESTINO = Path(__file__).resolve().parent.parent / "public" / "exemplos"
 
-# Mesma distribuição de disciplinas usada em src/data/seed.ts: só Português e Matemática.
-DISCIPLINAS_1_2 = ["Português"] * 8 + ["Matemática"] * 8
-DISCIPLINAS_3_5 = ["Português"] * 10 + ["Matemática"] * 10
+# Mesmo número de questões de src/data/seed.ts (questoesDaProva): 8 no 1º e no 2º ano, 10 do 3º ao 5º.
+DISCIPLINAS = {"pt": "Português", "mat": "Matemática"}
 
 
-def capa(c, ano):
+def questoes_da_prova(ano):
+    return 8 if ano <= 2 else 10
+
+
+def capa(c, ano, disciplina):
     largura, altura = A4
     c.setFont("Helvetica-Bold", 26)
-    c.drawCentredString(largura / 2, altura - 70 * mm, "Avaliação anual")
+    c.drawCentredString(largura / 2, altura - 70 * mm, f"Avaliação anual · {disciplina}")
     c.setFont("Helvetica", 18)
     c.drawCentredString(largura / 2, altura - 82 * mm, f"{ano}º ano do Ensino Fundamental")
     c.setFont("Helvetica", 12)
@@ -34,11 +38,10 @@ def capa(c, ano):
     c.showPage()
 
 
-def questoes(c, ano):
+def questoes(c, ano, disciplina):
     largura, altura = A4
-    disciplinas = DISCIPLINAS_1_2 if ano <= 2 else DISCIPLINAS_3_5
     y = altura - 25 * mm
-    for numero, disciplina in enumerate(disciplinas, start=1):
+    for numero in range(1, questoes_da_prova(ano) + 1):
         if y < 70 * mm:
             c.showPage()
             y = altura - 25 * mm
@@ -59,14 +62,18 @@ def questoes(c, ano):
 
 def main():
     DESTINO.mkdir(parents=True, exist_ok=True)
+    tamanhos = {}
     for ano in range(1, 6):
-        arquivo = DESTINO / f"prova-exemplo-{ano}ano.pdf"
-        c = canvas.Canvas(str(arquivo), pagesize=A4)
-        c.setTitle(f"Prova de exemplo — {ano}º ano")
-        capa(c, ano)
-        questoes(c, ano)
-        c.save()
-        print(arquivo.name, arquivo.stat().st_size // 1024, "KB")
+        for sufixo, disciplina in DISCIPLINAS.items():
+            arquivo = DESTINO / f"prova-exemplo-{ano}ano-{sufixo}.pdf"
+            c = canvas.Canvas(str(arquivo), pagesize=A4, invariant=1)
+            c.setTitle(f"Prova de exemplo — {disciplina}, {ano}º ano")
+            capa(c, ano, disciplina)
+            questoes(c, ano, disciplina)
+            c.save()
+            tamanhos[f"{ano}-{sufixo}"] = arquivo.stat().st_size
+            print(arquivo.name, arquivo.stat().st_size // 1024, "KB")
+    print("TAMANHOS_PDF =", tamanhos)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { textoMudancaAluno } from '../lib/alunos'
 import { iniciaisDoNome } from '../lib/iniciais'
 import {
   BRANCO,
+  DISCIPLINAS_DA_PROVA,
   LETRAS,
   RASURA,
   VAZIO,
@@ -13,6 +14,7 @@ import {
   type Colegio,
   type Coordenador,
   type Db,
+  type Disciplina,
   type Evento,
   type Id,
   type Lancamento,
@@ -32,7 +34,7 @@ import { habilidadesDoAno } from './bncc'
 import { NOMES_ADULTOS, NOMES_MENINAS, NOMES_MENINOS, SOBRENOMES } from './nomes'
 
 /** Mude quando o formato dos dados mudar: o navegador descarta o que tinha salvo e recria os exemplos. */
-export const VERSAO_DADOS = 4
+export const VERSAO_DADOS = 5
 
 const ANO_LETIVO = 2026
 const ANO_ANTERIOR = 2025
@@ -100,13 +102,19 @@ function criarAvaliacoes(hoje: string): Avaliacao[] {
   ]
 }
 
-const TAMANHO_PDF_EXEMPLO: Record<Serie, number> = { 1: 10_015, 2: 10_015, 3: 12_034, 4: 12_035, 5: 6_311 }
-
-/** Disciplinas de cada questão, na ordem da prova (igual a scripts/gerar_pdfs_exemplo.py): só Português e Matemática. */
-export function disciplinasDoCaderno(serie: Serie): string[] {
-  const porDisciplina = serie <= 2 ? 8 : 10
-  return [...Array<string>(porDisciplina).fill('Português'), ...Array<string>(porDisciplina).fill('Matemática')]
+/** Tamanho dos PDFs de exemplo (scripts/gerar_pdfs_exemplo.py), por ano e disciplina. */
+const TAMANHO_PDF_EXEMPLO: Record<string, number> = {
+  '1-pt': 6047, '1-mat': 6048, '2-pt': 6047, '2-mat': 6048, '3-pt': 7376,
+  '3-mat': 7377, '4-pt': 7376, '4-mat': 7377, '5-pt': 4503, '5-mat': 4501,
 }
+
+/** Quantas questões tem a prova de cada disciplina (igual a scripts/gerar_pdfs_exemplo.py). */
+export const questoesDaProva = (serie: Serie) => (serie <= 2 ? 8 : 10)
+
+/** Parte do nome dos arquivos e dos ids de exemplo: "pt" ou "mat". */
+export const sufixoDisciplina = (disciplina: Disciplina) => (disciplina === 'Português' ? 'pt' : 'mat')
+
+const idCaderno = (ano: number, serie: Serie, disciplina: Disciplina) => `cad-${ano}-${serie}-${sufixoDisciplina(disciplina)}`
 
 /** Parâmetros usados só para simular respostas plausíveis; não vão para os dados. */
 interface ItemSimulado {
@@ -121,21 +129,22 @@ interface ItemSimulado {
 type StatusSimulado = 'concluido' | 'andamento' | 'nao_iniciado'
 
 // Situações fixas, para a demonstração ter sempre um exemplo de cada caso no colégio da versão de teste.
-const STATUS_FIXO_2026: Record<Id, StatusSimulado> = {
-  'tur-monte-verde-2026-1A': 'nao_iniciado',
-  'tur-monte-verde-2026-2A': 'concluido',
-  'tur-monte-verde-2026-3A': 'andamento',
-  'tur-monte-verde-2026-4A': 'concluido',
+// No 3º A (a turma da professora da versão de teste), Português já foi concluído e Matemática está na metade.
+const STATUS_FIXO_2026: Record<Id, Record<Disciplina, StatusSimulado>> = {
+  'tur-monte-verde-2026-1A': { Português: 'nao_iniciado', Matemática: 'nao_iniciado' },
+  'tur-monte-verde-2026-2A': { Português: 'concluido', Matemática: 'concluido' },
+  'tur-monte-verde-2026-3A': { Português: 'concluido', Matemática: 'andamento' },
+  'tur-monte-verde-2026-4A': { Português: 'concluido', Matemática: 'concluido' },
 }
 
 // Gabarito errado de propósito, para o alerta de "gabarito suspeito" aparecer nos resultados da Solar.
-const GABARITO_ERRADO = { cadernoId: 'cad-2026-4', indice: 11, gabarito: 'C' as Letra, correta: 'A' as Letra }
+const GABARITO_ERRADO = { cadernoId: 'cad-2026-4-mat', indice: 1, gabarito: 'C' as Letra, correta: 'A' as Letra }
 
 // Exemplos de comentário por alternativa, escritos como a equipe pedagógica escreveria ao montar a prova.
 // O texto completa a frase "Quem marca esta alternativa costuma…".
 const COMENTADAS: { cadernoId: Id; indice: number; habilidade: string; distrator: (gabarito: Letra) => Letra; texto: string; comoRetomar: string }[] = [
   {
-    cadernoId: 'cad-2026-3',
+    cadernoId: 'cad-2026-3-pt',
     indice: 2,
     habilidade: 'EF35LP04',
     distrator: (g) => (g === 'B' ? 'C' : 'B'),
@@ -143,8 +152,8 @@ const COMENTADAS: { cadernoId: Id; indice: number; habilidade: string; distrator
     comoRetomar: 'Leia um texto curto com a turma e pergunte o que ele dá a entender sem dizer. Peça que mostrem as pistas que usaram.',
   },
   {
-    cadernoId: 'cad-2026-3',
-    indice: 11,
+    cadernoId: 'cad-2026-3-mat',
+    indice: 1,
     habilidade: 'EF03MA05',
     distrator: (g) => (g === 'D' ? 'A' : 'D'),
     texto: 'ter somado sem considerar a reserva (o “vai um”).',
@@ -290,18 +299,19 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   const itensSimulados = new Map<Id, ItemSimulado[]>()
   for (const avaliacao of avaliacoes) {
     for (const serie of [1, 2, 3, 4, 5] as Serie[]) {
-      const id = `cad-${avaliacao.anoLetivo}-${serie}`
-      const disciplinas = disciplinasDoCaderno(serie)
-      const gabaritos = rng.embaralhar(disciplinas.map((_, i) => LETRAS[i % 4]))
+     for (const disciplina of DISCIPLINAS_DA_PROVA) {
+      const id = idCaderno(avaliacao.anoLetivo, serie, disciplina)
+      const total = questoesDaProva(serie)
+      const gabaritos = rng.embaralhar(Array.from({ length: total }, (_, i) => LETRAS[i % 4]))
       const comentadas = COMENTADAS.filter((c) => c.cadernoId === id)
       const usadas = new Set<string>(comentadas.map((c) => c.habilidade))
-      const questoes: Questao[] = disciplinas.map((disciplina, i) => {
+      const questoes: Questao[] = gabaritos.map((gabarito, i) => {
         const fixa = comentadas.find((c) => c.indice === i)
-        if (fixa) return { gabarito: gabaritos[i], disciplina, habilidade: fixa.habilidade, anulada: false }
+        if (fixa) return { gabarito, disciplina, habilidade: fixa.habilidade, anulada: false }
         const candidatas = habilidadesDoAno(serie, disciplina).filter((h) => !usadas.has(h.codigo))
         const habilidade = candidatas.length ? rng.escolher(candidatas).codigo : null
         if (habilidade) usadas.add(habilidade)
-        return { gabarito: gabaritos[i], disciplina, habilidade, anulada: false }
+        return { gabarito, disciplina, habilidade, anulada: false }
       })
       const itens: ItemSimulado[] = questoes.map((q) => ({
         correta: q.gabarito as Letra,
@@ -325,22 +335,25 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
 
       const anterior = avaliacao.anoLetivo === ANO_ANTERIOR
       const conferida = anterior || id !== GABARITO_ERRADO.cadernoId
+      const arquivo = `prova-exemplo-${serie}ano-${sufixoDisciplina(disciplina)}.pdf`
       cadernos.push({
         id,
         avaliacaoId: avaliacao.id,
         serie,
+        disciplina,
         numAlternativas: 4,
         usaFolhaRespostas: serie === 5,
         questoes,
         pdf: {
-          nome: `prova-exemplo-${serie}ano.pdf`,
-          tamanho: TAMANHO_PDF_EXEMPLO[serie],
+          nome: arquivo,
+          tamanho: TAMANHO_PDF_EXEMPLO[`${serie}-${sufixoDisciplina(disciplina)}`],
           origem: 'exemplo',
-          url: `exemplos/prova-exemplo-${serie}ano.pdf`,
+          url: `exemplos/${arquivo}`,
           enviadoEm: somarDias(avaliacao.aplicacaoInicio, -21),
         },
         conferencia: conferida ? { por: anterior ? equipeSolar[0].nome : quemConfere, em: somarDias(avaliacao.aplicacaoInicio, -10) } : null,
       })
+     }
     }
   }
 
@@ -349,8 +362,14 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     return proficiencia.get(alunoId)! + efeitoDoTempo(turma.anoLetivo - aluno.anoIngresso! + 1) + efeitoTurma.get(turma.id)! + rng.normal(0, 0.15)
   }
 
-  function simularLancamento(turma: Turma, lista: { id: Id; numero: string }[], status: Exclude<StatusSimulado, 'nao_iniciado'>, quando: () => string): Lancamento {
-    const cadernoId = `cad-${turma.anoLetivo}-${turma.serie}`
+  function simularLancamento(
+    turma: Turma,
+    disciplina: Disciplina,
+    lista: { id: Id; numero: string }[],
+    status: Exclude<StatusSimulado, 'nao_iniciado'>,
+    quando: () => string,
+  ): Lancamento {
+    const cadernoId = idCaderno(turma.anoLetivo, turma.serie, disciplina)
     const itens = itensSimulados.get(cadernoId)!
     const respostas: Record<Id, RespostaAluno> = {}
     const completos = status === 'concluido' ? lista.length : Math.round(lista.length * rng.entre(0.4, 0.75))
@@ -367,16 +386,18 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
 
   const lancamentos: Lancamento[] = []
   for (const turma of turmas) {
-    if (turma.anoLetivo === ANO_ANTERIOR) {
-      const lista = [...turmaAnterior].filter(([, t]) => t === turma.id).map(([id]) => ({ id, numero: numeroAnterior.get(id)! }))
-      lista.sort((a, b) => Number(a.numero) - Number(b.numero))
-      lancamentos.push(simularLancamento(turma, lista, 'concluido', () => momentoEntre(rng, '2025-11-22', '2025-12-05')))
-      continue
+    for (const disciplina of DISCIPLINAS_DA_PROVA) {
+      if (turma.anoLetivo === ANO_ANTERIOR) {
+        const lista = [...turmaAnterior].filter(([, t]) => t === turma.id).map(([id]) => ({ id, numero: numeroAnterior.get(id)! }))
+        lista.sort((a, b) => Number(a.numero) - Number(b.numero))
+        lancamentos.push(simularLancamento(turma, disciplina, lista, 'concluido', () => momentoEntre(rng, '2025-11-22', '2025-12-05')))
+        continue
+      }
+      const status = STATUS_FIXO_2026[turma.id]?.[disciplina] ?? sortearStatus(rng)
+      if (status === 'nao_iniciado') continue
+      const lista = alunos.filter((a) => a.turmaId === turma.id).sort((a, b) => Number(a.numero) - Number(b.numero))
+      lancamentos.push(simularLancamento(turma, disciplina, lista, status, () => momentoEntre(rng, aval2026.aplicacaoFim, somarDias(hoje, -1))))
     }
-    const status = STATUS_FIXO_2026[turma.id] ?? sortearStatus(rng)
-    if (status === 'nao_iniciado') continue
-    const lista = alunos.filter((a) => a.turmaId === turma.id).sort((a, b) => Number(a.numero) - Number(b.numero))
-    lancamentos.push(simularLancamento(turma, lista, status, () => momentoEntre(rng, aval2026.aplicacaoFim, somarDias(hoje, -1))))
   }
 
   // Situações da demonstração no colégio da versão de teste.
@@ -455,7 +476,8 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   }
   alunos.push(chegou)
   proficiencia.set(chegou.id, 0.1)
-  const lancTeste = lancamentos.find((l) => l.turmaId === turmaTeste.id)!
+  // A prova de Português dela já está concluída; a de Matemática, em andamento, ainda não chegou à nova aluna.
+  const lancTeste = lancamentos.find((l) => l.turmaId === turmaTeste.id && l.cadernoId === idCaderno(ANO_LETIVO, 3, 'Português'))!
   lancTeste.respostas[chegou.id] = {
     situacao: 'presente',
     marcas: simularMarcas(rng, theta(chegou.id, turmaTeste), itensSimulados.get(lancTeste.cadernoId)!),
@@ -479,7 +501,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
     colegioId: null,
     turmaId: null,
     cadernoId: null,
-    texto: 'Conferiu os gabaritos das provas do 1º, 2º, 3º e 5º ano da Avaliação anual 2026.',
+    texto: 'Conferiu os gabaritos das provas de Português do 1º ao 5º ano e de Matemática do 1º, 2º, 3º e 5º ano da Avaliação anual 2026.',
   })
   historico.sort((a, b) => a.em.localeCompare(b.em))
 

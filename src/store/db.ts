@@ -1,6 +1,7 @@
 import { produce, type Draft } from 'immer'
 import { useSyncExternalStore } from 'react'
 import { gerarDadosExemplo, VERSAO_DADOS } from '../data/seed'
+import type { PainelRede } from '../lib/rede'
 import type { Db } from '../types'
 import { apagarTodosPdfs } from './arquivos'
 
@@ -113,6 +114,9 @@ export function atualizar(receita: (rascunho: Draft<Db>) => void) {
   notificar()
   agendarGravacao()
 }
+
+/** O painel da rede que o banco manda à Solar (na plataforma). Na demonstração não há: as telas calculam. */
+export const usePainelDoServidor = (): PainelRede | null => null
 
 export function substituirDados(novo: Db) {
   estado = novo

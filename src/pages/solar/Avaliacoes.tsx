@@ -3,12 +3,13 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Cabecalho, Cartao, Progresso, Selo, Vazio, type Tom } from '../../components/ui'
 import { avaliacoesOrdenadas, cadernosDaAvaliacao, descreverPeriodo, etapaAvaliacao, permissoesDe, pessoaDoPerfil, turmasDoAno, type EtapaAvaliacao } from '../../lib/consultas'
-import { progressoDe } from '../../lib/estatisticas'
+import { progressoAg } from '../../lib/rede'
 import { serieNome } from '../../lib/formato'
 import { criarAvaliacao, type DadosAvaliacao } from '../../store/acoes'
 import { useDb } from '../../store/db'
+import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { SERIES, type Avaliacao, type Caderno, type Db, type Serie } from '../../types'
+import { DISCIPLINAS_DA_PROVA, SERIES, type Avaliacao, type Caderno, type Db, type Serie } from '../../types'
 
 export const ETAPAS: Record<EtapaAvaliacao, { rotulo: string; tom: Tom }> = {
   agendada: { rotulo: 'Agendada', tom: 'info' },
@@ -26,6 +27,7 @@ export function pendenciasDoCaderno(caderno: Caderno): string[] {
 
 export default function Avaliacoes() {
   const db = useDb()
+  const rede = useRede()
   const perfil = usePerfil()
   const navigate = useNavigate()
   const [criando, setCriando] = useState(false)
@@ -37,7 +39,7 @@ export default function Avaliacoes() {
       <Cabecalho
         sobretitulo="Provas"
         titulo="Avaliações"
-        subtitulo="A avaliação é anual, com uma prova para cada ano. Cada prova tem o PDF, o gabarito e a disciplina e a habilidade de cada questão."
+        subtitulo="A avaliação é anual, com uma prova de Português e outra de Matemática para cada ano. Cada prova tem o PDF, o gabarito e a habilidade de cada questão."
         acoes={
           editarRede &&
           !criando && (
@@ -59,7 +61,7 @@ export default function Avaliacoes() {
       {avaliacoes.map((avaliacao) => {
         const etapa = ETAPAS[etapaAvaliacao(avaliacao)]
         const cadernos = cadernosDaAvaliacao(db, avaliacao.id)
-        const andamento = contarConcluidas(db, avaliacao, cadernos)
+        const andamento = contarConcluidas(db, rede, avaliacao, cadernos)
         return (
           <Cartao
             key={avaliacao.id}
@@ -83,26 +85,30 @@ export default function Avaliacoes() {
             }
           >
             <div className="cadernos-resumo">
-              {SERIES.map((serie) => {
-                const caderno = cadernos.find((c) => c.serie === serie)
-                const pendencias = caderno ? pendenciasDoCaderno(caderno) : []
-                return (
-                  <Link
-                    key={serie}
-                    to={`/solar/avaliacoes/${avaliacao.id}?serie=${serie}`}
-                    className={`caderno-chip ${!caderno ? 'ausente' : pendencias.length ? 'pendente' : 'pronto'}`}
-                  >
-                    <strong>{serieNome(serie)}</strong>
-                    <span>{!caderno ? 'sem prova' : pendencias.length ? pendencias.join(', ') : `${caderno.questoes.length} questões · pronta`}</span>
-                  </Link>
-                )
-              })}
+              {SERIES.map((serie) =>
+                DISCIPLINAS_DA_PROVA.map((disciplina) => {
+                  const caderno = cadernos.find((c) => c.serie === serie && c.disciplina === disciplina)
+                  const pendencias = caderno ? pendenciasDoCaderno(caderno) : []
+                  return (
+                    <Link
+                      key={`${serie}-${disciplina}`}
+                      to={`/solar/avaliacoes/${avaliacao.id}?serie=${serie}&disciplina=${disciplina}`}
+                      className={`caderno-chip ${!caderno ? 'ausente' : pendencias.length ? 'pendente' : 'pronto'}`}
+                    >
+                      <strong>
+                        {serieNome(serie)} · {disciplina}
+                      </strong>
+                      <span>{!caderno ? 'sem prova' : pendencias.length ? pendencias.join(', ') : `${caderno.questoes.length} questões · pronta`}</span>
+                    </Link>
+                  )
+                }),
+              )}
             </div>
             {andamento.total > 0 && andamento.lancadas > 0 && (
               <div className="progresso-com-texto">
-                <Progresso valor={andamento.concluidas} total={andamento.total} rotulo="Turmas concluídas" />
+                <Progresso valor={andamento.concluidas} total={andamento.total} rotulo="Lançamentos concluídos" />
                 <span className="texto-2 pequeno">
-                  {andamento.concluidas} de {andamento.total} turmas concluíram o lançamento
+                  {andamento.concluidas} de {andamento.total} lançamentos concluídos (cada turma lança Português e Matemática)
                 </span>
               </div>
             )}
@@ -113,13 +119,13 @@ export default function Avaliacoes() {
   )
 }
 
-function contarConcluidas(db: Db, avaliacao: Avaliacao, cadernos: Caderno[]) {
+function contarConcluidas(db: Db, rede: Rede, avaliacao: Avaliacao, cadernos: Caderno[]) {
   let total = 0
   let concluidas = 0
   let lancadas = 0
   for (const caderno of cadernos) {
     for (const turma of turmasDoAno(db, avaliacao.anoLetivo).filter((t) => t.serie === caderno.serie)) {
-      const progresso = progressoDe(db, caderno, turma.id)
+      const progresso = progressoAg(rede.agDe(caderno.id, turma.id))
       total++
       if (progresso.status === 'concluido') concluidas++
       if (progresso.status !== 'nao_iniciado') lancadas++
@@ -192,7 +198,10 @@ export function FormularioAvaliacao(props: {
               </label>
             ))}
           </div>
-          <p className="campo-ajuda">Cada prova começa com 16 questões (1º e 2º ano) ou 20 (3º ao 5º), metade de Português e metade de Matemática. Dá para mudar depois.</p>
+          <p className="campo-ajuda">
+            Cada ano ganha duas provas, uma de Português e outra de Matemática, com 8 questões (1º e 2º ano) ou 10 (3º ao 5º) cada. Dá para mudar
+            depois.
+          </p>
         </fieldset>
       )}
       {erro && <p className="erro-campo">{erro}</p>}

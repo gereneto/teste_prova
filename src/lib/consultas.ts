@@ -1,4 +1,4 @@
-import type { Aluno, Avaliacao, Caderno, Colegio, Coordenador, Db, Id, Lancamento, MembroSolar, Perfil, Professor, Serie, Turma } from '../types'
+import { DISCIPLINAS_DA_PROVA, type Aluno, type Avaliacao, type Caderno, type Colegio, type Coordenador, type Db, type Disciplina, type Id, type Lancamento, type MembroSolar, type Perfil, type Professor, type Serie, type Turma } from '../types'
 import { compararChamada } from './alunos'
 import { dataCurta, hojeIso, ordenarTurmas } from './formato'
 
@@ -73,20 +73,27 @@ export function avaliacoesOrdenadas(db: Db): Avaliacao[] {
   return [...db.avaliacoes].sort((a, b) => b.aplicacaoInicio.localeCompare(a.aplicacaoInicio))
 }
 
+/** Português antes de Matemática. */
+export const ordemDaDisciplina = (a: Disciplina, b: Disciplina) => DISCIPLINAS_DA_PROVA.indexOf(a) - DISCIPLINAS_DA_PROVA.indexOf(b)
+
+/** As provas de uma avaliação: por ano e, em cada ano, Português e depois Matemática. */
 export function cadernosDaAvaliacao(db: Db, avaliacaoId: Id): Caderno[] {
-  return db.cadernos.filter((c) => c.avaliacaoId === avaliacaoId).sort((a, b) => a.serie - b.serie)
+  return db.cadernos.filter((c) => c.avaliacaoId === avaliacaoId).sort((a, b) => a.serie - b.serie || ordemDaDisciplina(a.disciplina, b.disciplina))
 }
 
-export function cadernoDaSerie(db: Db, avaliacaoId: Id, serie: Serie): Caderno | undefined {
-  return db.cadernos.find((c) => c.avaliacaoId === avaliacaoId && c.serie === serie)
-}
+/** As provas de um ano numa avaliação (Português e Matemática). */
+export const cadernosDaSerie = (db: Db, avaliacaoId: Id, serie: Serie): Caderno[] =>
+  cadernosDaAvaliacao(db, avaliacaoId).filter((c) => c.serie === serie)
 
-/** A avaliação do ano letivo da turma (a prova que ela faz), se houver. */
-export function avaliacaoDaTurma(db: Db, turma: Turma): { avaliacao: Avaliacao; caderno: Caderno } | null {
+export const cadernoDe = (db: Db, avaliacaoId: Id, serie: Serie, disciplina: Disciplina): Caderno | undefined =>
+  db.cadernos.find((c) => c.avaliacaoId === avaliacaoId && c.serie === serie && c.disciplina === disciplina)
+
+/** A avaliação do ano letivo da turma e as provas que ela faz (Português e Matemática), se houver. */
+export function avaliacaoDaTurma(db: Db, turma: Turma): { avaliacao: Avaliacao; cadernos: Caderno[] } | null {
   for (const avaliacao of avaliacoesOrdenadas(db)) {
     if (avaliacao.anoLetivo !== turma.anoLetivo) continue
-    const caderno = cadernoDaSerie(db, avaliacao.id, turma.serie)
-    if (caderno) return { avaliacao, caderno }
+    const cadernos = cadernosDaSerie(db, avaliacao.id, turma.serie)
+    if (cadernos.length) return { avaliacao, cadernos }
   }
   return null
 }

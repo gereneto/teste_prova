@@ -9,6 +9,7 @@ import {
   analisarQuestoes,
   avaliados,
   coletarResultados,
+  contarFaixas,
   desempenhoPor,
   ehNovo,
   faixaDe,
@@ -18,13 +19,20 @@ import {
   participacao,
   progressoDaTurma,
   questaoValida,
+  resumoGrupos,
   type AnaliseQuestao,
+  type Desempenho,
+  type Participacao,
+  type Progresso,
   type ResultadoAluno,
+  type ResumoGrupos,
 } from '../../lib/estatisticas'
 import { baixarCsv, paraNomeDeArquivo } from '../../lib/exportar'
 import { dataCurta, pct, plural, turmaNome } from '../../lib/formato'
 import { identificacao } from '../../lib/iniciais'
 import { comentarioEmFrase } from '../../lib/leitura'
+import { analisarQuestoesAg, avaliadosAg, desempenhoAg, faixasAg, mediaAg, participacaoAg, progressoAg, resumoGruposAg } from '../../lib/rede'
+import { useRede } from '../../store/painel'
 import { BRANCO, DISCIPLINAS_DA_PROVA, LETRAS, RASURA, VAZIO, type Caderno, type Letra } from '../../types'
 import { CabecalhoTurma } from './CabecalhoTurma'
 import { useContextoTurma, type ContextoTurma } from './contexto'
@@ -48,9 +56,75 @@ const textoMarca = (marca: string) => (marca === BRANCO ? 'branco' : marca === R
 
 type Aba = 'resumo' | 'alunos' | 'questoes' | 'habilidades'
 
-function TelaResultados({ db, perfil, caderno, avaliacao, turma, colegio, lancamento, alunos, base }: ContextoTurma) {
+/** Os números da turma numa prova, prontos para as telas: dos alunos (professor e coordenação) ou da soma da turma (Solar). */
+interface Numeros {
+  avaliados: number
+  media: number | null
+  participacao: Participacao
+  mediaAcertos: number
+  faixas: readonly number[]
+  /** As duas provas da turma, para comparar. */
+  porDisciplina: Desempenho[]
+  porHabilidade: Desempenho[]
+  analise: AnaliseQuestao[]
+  grupos: ResumoGrupos
+  progresso: Progresso
+}
+
+function TelaResultados(contexto: ContextoTurma) {
+  // A Solar vê os números da turma, mas não os alunos (a lista fica com o colégio): na plataforma, ela recebe só a soma.
+  return contexto.perfil.papel === 'solar' ? <ComSoma {...contexto} /> : <ComAlunos {...contexto} />
+}
+
+function ComAlunos(contexto: ContextoTurma) {
+  const { db, caderno, avaliacao, turma, lancamento, alunos } = contexto
+  // Os números são desta prova (Português ou Matemática); "Acerto por disciplina" compara com a outra prova da turma.
+  const resultados = useMemo(
+    () => coletarResultados(db, { avaliacaoId: avaliacao.id, turmaId: turma.id, cadernoId: caderno.id }),
+    [db, avaliacao.id, turma.id, caderno.id],
+  )
+  const daTurma = useMemo(() => coletarResultados(db, { avaliacaoId: avaliacao.id, turmaId: turma.id }), [db, avaliacao.id, turma.id])
+  const lista = avaliados(resultados)
+  const numeros: Numeros = {
+    avaliados: lista.length,
+    media: mediaPct(resultados),
+    participacao: participacao(resultados),
+    mediaAcertos: lista.length ? lista.reduce((s, r) => s + r.correcao.acertos, 0) / lista.length : 0,
+    faixas: contarFaixas(resultados),
+    porDisciplina: desempenhoPor(daTurma, (q) => q.disciplina),
+    porHabilidade: desempenhoPor(resultados, (q) => q.habilidade),
+    analise: analisarQuestoes(caderno, resultados),
+    grupos: resumoGrupos(resultados),
+    progresso: progressoDaTurma(caderno, alunos, lancamento),
+  }
+  return <TelaComNumeros contexto={contexto} numeros={numeros} resultados={resultados} />
+}
+
+function ComSoma(contexto: ContextoTurma) {
+  const { caderno, turma } = contexto
+  const rede = useRede()
+  const ag = rede.agDe(caderno.id, turma.id)
+  const daProva = ag ? [ag] : []
+  const daTurma = rede.painel.turmas.filter((x) => x.turma === turma.id && rede.cadernoDe(x.caderno)?.avaliacaoId === caderno.avaliacaoId)
+  const n = avaliadosAg(daProva)
+  const numeros: Numeros = {
+    avaliados: n,
+    media: mediaAg(daProva, rede.cadernoDe),
+    participacao: participacaoAg(daProva),
+    mediaAcertos: n ? ag!.somaAcertos / n : 0,
+    faixas: faixasAg(daProva),
+    porDisciplina: desempenhoAg(daTurma, rede.cadernoDe, (q) => q.disciplina),
+    porHabilidade: desempenhoAg(daProva, rede.cadernoDe, (q) => q.habilidade),
+    analise: analisarQuestoesAg(caderno, daProva),
+    grupos: resumoGruposAg(daProva, rede.cadernoDe, turma.anoLetivo),
+    progresso: progressoAg(ag),
+  }
+  return <TelaComNumeros contexto={contexto} numeros={numeros} resultados={[]} />
+}
+
+function TelaComNumeros({ contexto, numeros, resultados }: { contexto: ContextoTurma; numeros: Numeros; resultados: ResultadoAluno[] }) {
+  const { db, perfil, caderno, avaliacao, turma, colegio, base } = contexto
   const [params, setParams] = useSearchParams()
-  // A Solar vê os números da turma, mas não os alunos (a lista fica com o colégio).
   const comAlunos = perfil.papel !== 'solar'
   const abas: { id: Aba; rotulo: string }[] = [
     { id: 'resumo', rotulo: 'Resumo' },
@@ -59,17 +133,13 @@ function TelaResultados({ db, perfil, caderno, avaliacao, turma, colegio, lancam
     { id: 'habilidades', rotulo: 'Habilidades' },
   ]
   const aba: Aba = abas.find((a) => a.id === params.get('aba'))?.id ?? 'resumo'
-
-  const resultados = useMemo(() => coletarResultados(db, { avaliacaoId: avaliacao.id, turmaId: turma.id }), [db, avaliacao.id, turma.id])
-  const lista = avaliados(resultados)
-  const progresso = progressoDaTurma(caderno, alunos, lancamento)
-  const analise = analisarQuestoes(caderno, resultados)
+  const { progresso, analise } = numeros
   const semGabarito = caderno.questoes.filter((q) => !q.anulada && q.gabarito === null).length
   const mudancasGabarito = db.historico.filter((e) => e.cadernoId === caderno.id && e.avisarTurmas).slice(-3)
 
   function exportar() {
     baixarCsv(
-      `resultados-${paraNomeDeArquivo(`${colegio.nome} ${turmaNome(turma)} ${avaliacao.titulo}`)}.csv`,
+      `resultados-${paraNomeDeArquivo(`${colegio.nome} ${turmaNome(turma)} ${caderno.disciplina} ${avaliacao.titulo}`)}.csv`,
       ['Nº', 'Iniciais', 'Sexo', 'Entrou no colégio', 'Novo no colégio', 'Situação', 'Acertos', 'Questões que contam', '% de acertos', 'Faixa de acerto', ...caderno.questoes.map((_, i) => `Q${i + 1}`)],
       resultados.map((r) => [
         r.aluno.numero,
@@ -132,7 +202,7 @@ function TelaResultados({ db, perfil, caderno, avaliacao, turma, colegio, lancam
         ))}
       </div>
 
-      {!lista.length ? (
+      {!numeros.avaliados ? (
         <Vazio
           titulo="Ainda não há alunos avaliados"
           acao={
@@ -146,48 +216,46 @@ function TelaResultados({ db, perfil, caderno, avaliacao, turma, colegio, lancam
           Os resultados aparecem assim que o primeiro aluno tiver todas as questões lançadas.
         </Vazio>
       ) : aba === 'resumo' ? (
-        <Resumo resultados={resultados} analise={analise} caderno={caderno} />
+        <Resumo numeros={numeros} caderno={caderno} />
       ) : aba === 'alunos' ? (
         <Alunos {...{ db, caderno, avaliacao, turma, resultados }} />
       ) : aba === 'questoes' ? (
         <Questoes caderno={caderno} analise={analise} />
       ) : (
-        <Habilidades resultados={resultados} />
+        <Habilidades porHabilidade={numeros.porHabilidade} />
       )}
     </>
   )
 }
 
-function Resumo({ resultados, analise, caderno }: { resultados: ResultadoAluno[]; analise: AnaliseQuestao[]; caderno: Caderno }) {
-  const lista = avaliados(resultados)
-  const media = mediaPct(resultados)
-  const part = participacao(resultados)
+function Resumo({ numeros, caderno }: { numeros: Numeros; caderno: Caderno }) {
+  const { media, mediaAcertos, analise } = numeros
+  const part = numeros.participacao
   const validas = caderno.questoes.filter(questaoValida).length
-  const mediaAcertos = lista.length ? lista.reduce((s, r) => s + r.correcao.acertos, 0) / lista.length : 0
-  const porDisciplina = DISCIPLINAS_DA_PROVA.map((d) => desempenhoPor(resultados, (q) => q.disciplina).find((x) => x.chave === d)).filter(Boolean)
+  const porDisciplina = DISCIPLINAS_DA_PROVA.map((d) => numeros.porDisciplina.find((x) => x.chave === d)).filter(Boolean)
   return (
     <>
       <div className="grade grade-kpis grade-kpis-3">
-        <Kpi rotulo="Acerto médio da turma" valor={pct(media)} detalhe={`${Math.round(mediaAcertos)} de ${validas} questões, em média`} />
+        <Kpi rotulo={`Acerto médio em ${caderno.disciplina}`} valor={pct(media)} detalhe={`${Math.round(mediaAcertos)} de ${validas} questões, em média`} />
         <Kpi rotulo="Alunos avaliados" valor={`${part.avaliados} de ${part.matriculados}`} detalhe={[part.faltas && plural(part.faltas, 'faltou', 'faltaram'), part.adaptadas && `${part.adaptadas} com prova adaptada`].filter(Boolean).join(' · ')} />
         <Kpi rotulo="Questões que contam" valor={validas} detalhe={caderno.questoes.length > validas ? `${caderno.questoes.length - validas} fora do cálculo` : 'todas'} />
       </div>
 
       <div className="grade grade-2">
         <Cartao titulo="Alunos por faixa de acerto">
-          <Histograma resultados={resultados} />
+          <Histograma contagem={numeros.faixas} />
         </Cartao>
-        <Cartao titulo="Acerto por disciplina">
+        <Cartao titulo="Acerto por disciplina" sub="As duas provas da turma.">
           <Barras itens={porDisciplina.map((d) => ({ chave: d!.chave, rotulo: d!.chave, valor: d!.pct, detalhe: plural(d!.questoes, 'questão', 'questões') }))} />
         </Cartao>
       </div>
 
       <Cartao titulo="Acerto por questão" sub="Percentual da turma que acertou cada questão. A linha tracejada marca a metade.">
-        <ColunasPorQuestao itens={analise.map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto, disciplina: a.questao.disciplina }))} />
+        <ColunasPorQuestao itens={analise.map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto }))} />
         <LegendaFaixas />
       </Cartao>
 
-      <ComparacaoGrupos resultados={resultados} />
+      <ComparacaoGrupos grupos={numeros.grupos} />
     </>
   )
 }
@@ -203,8 +271,9 @@ function Alunos(props: { db: ContextoTurma['db']; caderno: Caderno; avaliacao: C
   const doAnoAnterior = useMemo(() => {
     if (!anterior || turma.anoLetivo !== db.config.anoLetivo) return new Map<string, ResultadoAluno>()
     const ids = new Set(resultados.map((r) => r.aluno.id))
-    return new Map(coletarResultados(db, { avaliacaoId: anterior.id }).filter((r) => ids.has(r.aluno.id)).map((r) => [r.aluno.id, r]))
-  }, [db, anterior, turma.anoLetivo, resultados])
+    const daDisciplina = coletarResultados(db, { avaliacaoId: anterior.id, disciplina: caderno.disciplina })
+    return new Map(daDisciplina.filter((r) => ids.has(r.aluno.id)).map((r) => [r.aluno.id, r]))
+  }, [db, anterior, turma.anoLetivo, resultados, caderno.disciplina])
 
   return (
     <>
@@ -231,7 +300,11 @@ function Alunos(props: { db: ContextoTurma['db']; caderno: Caderno; avaliacao: C
                 <th>Entrou no colégio</th>
                 <th className="num">Acertos</th>
                 <th className="coluna-barra">% de acertos</th>
-                {doAnoAnterior.size > 0 && anterior && <th className="num">{anterior.titulo}</th>}
+                {doAnoAnterior.size > 0 && anterior && (
+                  <th className="num">
+                    {anterior.titulo} ({caderno.disciplina})
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -425,8 +498,8 @@ function Questoes({ caderno, analise }: { caderno: Caderno; analise: AnaliseQues
   )
 }
 
-function Habilidades({ resultados }: { resultados: ResultadoAluno[] }) {
-  const porHabilidade = desempenhoPor(resultados, (q) => q.habilidade).sort((a, b) => a.pct - b.pct)
+function Habilidades(props: { porHabilidade: Desempenho[] }) {
+  const porHabilidade = [...props.porHabilidade].sort((a, b) => a.pct - b.pct)
   return (
     <Cartao titulo="Habilidades da BNCC" sub="Da habilidade com menos acertos para a com mais">
       <div className="tabela-rolagem">

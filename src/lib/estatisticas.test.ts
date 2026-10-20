@@ -26,6 +26,7 @@ const caderno = (questoes: Questao[]): Caderno => ({
   id: 'cad',
   avaliacaoId: 'av',
   serie: 3,
+  disciplina: 'Português',
   numAlternativas: 4,
   usaFolhaRespostas: true,
   questoes,

@@ -108,6 +108,9 @@ export type ResultadoAvaliado = ResultadoAluno & { correcao: Correcao }
 export interface FiltroResultados {
   avaliacaoId: Id
   serie?: Serie | null
+  /** Uma prova só (Português ou Matemática de um ano). */
+  cadernoId?: Id | null
+  disciplina?: string | null
   colegioId?: Id | null
   turmaId?: Id | null
 }
@@ -117,7 +120,13 @@ export function coletarResultados(db: Db, filtro: FiltroResultados): ResultadoAl
   if (!avaliacao) return []
   const colegios = new Map(db.colegios.map((c) => [c.id, c]))
   const saida: ResultadoAluno[] = []
-  const cadernos = db.cadernos.filter((c) => c.avaliacaoId === avaliacao.id && (!filtro.serie || c.serie === filtro.serie))
+  const cadernos = db.cadernos.filter(
+    (c) =>
+      c.avaliacaoId === avaliacao.id &&
+      (!filtro.serie || c.serie === filtro.serie) &&
+      (!filtro.cadernoId || c.id === filtro.cadernoId) &&
+      (!filtro.disciplina || c.disciplina === filtro.disciplina),
+  )
   for (const caderno of cadernos) {
     const turmas = db.turmas.filter(
       (t) =>
@@ -233,45 +242,61 @@ export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[])
       const marca = marcaEm(r.marcas, indice)
       contagem[marca] = (contagem[marca] ?? 0) + 1
     }
-    if (!questaoValida(questao) || n === 0) {
-      return { indice, questao, n, pctAcerto: null, contagem, erroMaisComum: null, esquecidas: [], discriminacao: null, alertas: [] }
-    }
+    if (!questaoValida(questao) || n === 0) return analiseDaQuestao(caderno, questao, indice, n, contagem, 0, null)
     const acertou: number[] = doCaderno.map((r) => (r.correcao.porQuestao[indice] === 'certa' ? 1 : 0))
     const resto = doCaderno.map((r, k) => r.correcao.acertos - acertou[k])
     const acertos = acertou.reduce((soma, v) => soma + v, 0)
-    const pctAcerto = (100 * acertos) / n
-
-    let maisMarcada: { marca: string; qtd: number } | null = null
-    for (const letra of LETRAS.slice(0, caderno.numAlternativas)) {
-      const qtd = contagem[letra] ?? 0
-      if (letra !== questao.gabarito && qtd > 0 && (!maisMarcada || qtd > maisMarcada.qtd)) maisMarcada = { marca: letra, qtd }
-    }
-
-    const discriminacao = correlacao(acertou, resto)
-    const erradas = LETRAS.slice(0, caderno.numAlternativas).filter((l) => l !== questao.gabarito)
-    const esquecidas = n >= MINIMO_PARA_ALERTAS ? erradas.filter((l) => (100 * (contagem[l] ?? 0)) / n < PCT_ALTERNATIVA_ESQUECIDA) : []
-    const alertas: AlertaQuestao[] = []
-    if (n >= MINIMO_PARA_ALERTAS) {
-      // Quem vai bem no resto da prova erra esta questão, e uma alternativa errada é mais marcada que a do gabarito.
-      const outraMaisMarcada = maisMarcada !== null && maisMarcada.qtd > acertos
-      const suspeito = discriminacao !== null && discriminacao < -0.05 && outraMaisMarcada
-      if (suspeito) alertas.push('gabarito_suspeito')
-      if (pctAcerto < 20) alertas.push('muito_dificil')
-      if (pctAcerto > 95) alertas.push('muito_facil')
-      if (!suspeito && pctAcerto >= 20 && pctAcerto <= 95 && discriminacao !== null && discriminacao < DISCRIMINACAO_BAIXA) alertas.push('nao_separa')
-    }
-    return {
-      indice,
-      questao,
-      n,
-      pctAcerto,
-      contagem,
-      erroMaisComum: maisMarcada && { marca: maisMarcada.marca, qtd: maisMarcada.qtd, pct: (100 * maisMarcada.qtd) / n },
-      esquecidas,
-      discriminacao,
-      alertas,
-    }
+    return analiseDaQuestao(caderno, questao, indice, n, contagem, acertos, correlacao(acertou, resto))
   })
+}
+
+/**
+ * A análise de uma questão a partir das contagens: as de cada aluno (analisarQuestoes) ou as somas por turma que a
+ * Solar recebe (rede.ts). n é o número de alunos avaliados; a discriminação já vem calculada.
+ */
+export function analiseDaQuestao(
+  caderno: Pick<Caderno, 'numAlternativas'>,
+  questao: Questao,
+  indice: number,
+  n: number,
+  contagem: Record<string, number>,
+  acertos: number,
+  discriminacao: number | null,
+): AnaliseQuestao {
+  if (!questaoValida(questao) || n === 0) {
+    return { indice, questao, n, pctAcerto: null, contagem, erroMaisComum: null, esquecidas: [], discriminacao: null, alertas: [] }
+  }
+  const pctAcerto = (100 * acertos) / n
+
+  let maisMarcada: { marca: string; qtd: number } | null = null
+  for (const letra of LETRAS.slice(0, caderno.numAlternativas)) {
+    const qtd = contagem[letra] ?? 0
+    if (letra !== questao.gabarito && qtd > 0 && (!maisMarcada || qtd > maisMarcada.qtd)) maisMarcada = { marca: letra, qtd }
+  }
+
+  const erradas = LETRAS.slice(0, caderno.numAlternativas).filter((l) => l !== questao.gabarito)
+  const esquecidas = n >= MINIMO_PARA_ALERTAS ? erradas.filter((l) => (100 * (contagem[l] ?? 0)) / n < PCT_ALTERNATIVA_ESQUECIDA) : []
+  const alertas: AlertaQuestao[] = []
+  if (n >= MINIMO_PARA_ALERTAS) {
+    // Quem vai bem no resto da prova erra esta questão, e uma alternativa errada é mais marcada que a do gabarito.
+    const outraMaisMarcada = maisMarcada !== null && maisMarcada.qtd > acertos
+    const suspeito = discriminacao !== null && discriminacao < -0.05 && outraMaisMarcada
+    if (suspeito) alertas.push('gabarito_suspeito')
+    if (pctAcerto < 20) alertas.push('muito_dificil')
+    if (pctAcerto > 95) alertas.push('muito_facil')
+    if (!suspeito && pctAcerto >= 20 && pctAcerto <= 95 && discriminacao !== null && discriminacao < DISCRIMINACAO_BAIXA) alertas.push('nao_separa')
+  }
+  return {
+    indice,
+    questao,
+    n,
+    pctAcerto,
+    contagem,
+    erroMaisComum: maisMarcada && { marca: maisMarcada.marca, qtd: maisMarcada.qtd, pct: (100 * maisMarcada.qtd) / n },
+    esquecidas,
+    discriminacao,
+    alertas,
+  }
 }
 
 export function correlacao(x: number[], y: number[]): number | null {
@@ -353,6 +378,39 @@ export function separarPorSexo(resultados: ResultadoAluno[]): Record<'F' | 'M' |
   const grupos: Record<'F' | 'M' | 'sem', ResultadoAluno[]> = { F: [], M: [], sem: [] }
   for (const r of resultados) grupos[r.aluno.sexo ?? 'sem'].push(r)
   return grupos
+}
+
+export interface ResumoGrupo {
+  /** Alunos avaliados no grupo. */
+  n: number
+  media: number | null
+}
+
+/** Novos e antigos no colégio, meninas e meninos: o que a comparação por grupos mostra. */
+export interface ResumoGrupos {
+  anoLetivo: number | null
+  total: number
+  novos: ResumoGrupo
+  antigos: ResumoGrupo
+  F: ResumoGrupo
+  M: ResumoGrupo
+  /** Avaliados sem o ano de entrada ou sem o sexo (contados uma vez em cada falta). */
+  semDado: number
+}
+
+export function resumoGrupos(resultados: ResultadoAluno[]): ResumoGrupos {
+  const ingresso = separarPorIngresso(resultados)
+  const sexo = separarPorSexo(resultados)
+  const grupo = (lista: ResultadoAluno[]): ResumoGrupo => ({ n: avaliados(lista).length, media: mediaPct(lista) })
+  return {
+    anoLetivo: resultados[0]?.turma.anoLetivo ?? null,
+    total: avaliados(resultados).length,
+    novos: grupo(ingresso.novos),
+    antigos: grupo(ingresso.antigos),
+    F: grupo(sexo.F),
+    M: grupo(sexo.M),
+    semDado: avaliados(ingresso.sem_ano).length + avaliados(sexo.sem).length,
+  }
 }
 
 export interface GrupoAnoIngresso {

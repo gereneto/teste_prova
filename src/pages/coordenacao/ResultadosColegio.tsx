@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ComparacaoGrupos } from '../../components/ComparacaoGrupos'
 import { Aviso, Barras, Cabecalho, Cartao, ColunasPorQuestao, Histograma, Kpi, LegendaFaixas, LembreteCooperacao, MiniFaixas, Vazio } from '../../components/ui'
-import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDaSerie, etapaAvaliacao, turmasDoColegio } from '../../lib/consultas'
+import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDe, etapaAvaliacao, turmasDoColegio } from '../../lib/consultas'
 import {
   agruparPor,
   analisarQuestoes,
@@ -17,13 +17,14 @@ import {
   NOMES_FAIXAS,
   participacao,
   progressoDe,
+  resumoGrupos,
   type ResultadoAluno,
 } from '../../lib/estatisticas'
 import { AVISO_COMPARACAO, baixarCsv, paraNomeDeArquivo } from '../../lib/exportar'
 import { pct, plural, serieNome, turmaNome } from '../../lib/formato'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, SERIES, type Serie, type Turma } from '../../types'
+import { DISCIPLINAS_DA_PROVA, SERIES, type Disciplina, type Serie, type Turma } from '../../types'
 
 /** Mínimo de alunos avaliados para mostrar a média de uma turma; com menos, mostra só as faixas. */
 const MINIMO_POR_TURMA = 8
@@ -37,10 +38,14 @@ export default function ResultadosColegio() {
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   const avaliacoes = avaliacoesOrdenadas(db)
   const avaliacao = db.avaliacoes.find((a) => a.id === params.get('avaliacao')) ?? avaliacaoAtual(db) ?? avaliacoes[0]
-  const resultados = useMemo(
+  // Cada ano faz duas provas: os números são de uma (Português ou Matemática); a comparação entre as duas fica
+  // em "Acerto por disciplina" e na tabela das turmas.
+  const disciplina: Disciplina = DISCIPLINAS_DA_PROVA.find((d) => d === params.get('disciplina')) ?? DISCIPLINAS_DA_PROVA[0]
+  const todos = useMemo(
     () => (colegio && avaliacao ? coletarResultados(db, { avaliacaoId: avaliacao.id, colegioId: colegio.id }) : []),
     [db, colegio, avaliacao],
   )
+  const resultados = useMemo(() => todos.filter((r) => r.caderno.disciplina === disciplina), [todos, disciplina])
   if (!colegio) return null
   if (!avaliacao) return <Vazio titulo="Ainda não há avaliações">A Solar cadastra a avaliação anual e as provas de cada ano.</Vazio>
 
@@ -50,13 +55,13 @@ export default function ResultadosColegio() {
   const emLancamento = ['aplicacao', 'lancamento'].includes(etapaAvaliacao(avaliacao))
   const turmas = turmasDoColegio(db, colegio.id, avaliacao.anoLetivo)
   const concluidas = turmas.filter((t) => {
-    const caderno = cadernoDaSerie(db, avaliacao.id, t.serie)
+    const caderno = cadernoDe(db, avaliacao.id, t.serie, disciplina)
     return caderno && progressoDe(db, caderno, t.id).status === 'concluido'
   }).length
-  const porDisciplina = DISCIPLINAS_DA_PROVA.map((d) => desempenhoPor(resultados, (q) => q.disciplina).find((x) => x.chave === d)).filter(Boolean)
+  const porDisciplina = DISCIPLINAS_DA_PROVA.map((d) => desempenhoPor(todos, (q) => q.disciplina).find((x) => x.chave === d)).filter(Boolean)
   const porAno = SERIES.map((serie) => ({ serie, resultados: resultados.filter((r) => r.turma.serie === serie) })).filter((x) => avaliados(x.resultados).length)
   const seriesComTurma = SERIES.filter((s) => turmas.some((t) => t.serie === s))
-  const caderno = cadernoDaSerie(db, avaliacao.id, serieQuestoes)
+  const caderno = cadernoDe(db, avaliacao.id, serieQuestoes, disciplina)
   const doAno = resultados.filter((r) => r.turma.serie === serieQuestoes)
 
   function exportarTurmas() {
@@ -66,7 +71,7 @@ export default function ResultadosColegio() {
       return [turmaNome(turma), turma.turno, p.matriculados, p.avaliados, p.faltas, p.adaptadas, mediaPct(rs), ...contarFaixas(rs)]
     })
     baixarCsv(
-      `turmas-${paraNomeDeArquivo(`${colegio!.nome} ${avaliacao!.titulo}`)}.csv`,
+      `turmas-${paraNomeDeArquivo(`${colegio!.nome} ${avaliacao!.titulo} ${disciplina}`)}.csv`,
       ['Turma', 'Turno', 'Alunos', 'Avaliados', 'Faltas', 'Prova adaptada', 'Acerto médio (%)', ...NOMES_FAIXAS.map((f) => `Alunos com ${f.toLowerCase()} de acertos`)],
       linhas,
       AVISO_COMPARACAO,
@@ -81,7 +86,7 @@ export default function ResultadosColegio() {
         acoes={
           <label className="campo-inline">
             <span>Avaliação</span>
-            <select value={avaliacao.id} onChange={(e) => setParams({ avaliacao: e.target.value })}>
+            <select value={avaliacao.id} onChange={(e) => setParams({ avaliacao: e.target.value, disciplina })}>
               {avaliacoes.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.titulo}
@@ -92,6 +97,8 @@ export default function ResultadosColegio() {
         }
       />
 
+      <SeletorDisciplina valor={disciplina} aoMudar={(d) => setParams({ avaliacao: avaliacao.id, disciplina: d }, { replace: true })} />
+
       {emLancamento && <Aviso tom="atencao">O lançamento ainda está em andamento: os números vão mudar até o fim do prazo.</Aviso>}
 
       {!lista.length ? (
@@ -99,32 +106,32 @@ export default function ResultadosColegio() {
       ) : (
         <>
           <div className="grade grade-kpis grade-kpis-3">
-            <Kpi rotulo="Acerto médio do colégio" valor={pct(media)} />
+            <Kpi rotulo={`Acerto médio do colégio em ${disciplina}`} valor={pct(media)} />
             <Kpi rotulo="Alunos avaliados" valor={`${part.avaliados} de ${part.matriculados}`} detalhe={plural(part.faltas, 'faltou', 'faltaram')} />
-            <Kpi rotulo="Turmas que concluíram o lançamento" valor={`${concluidas} de ${turmas.length}`} />
+            <Kpi rotulo={`Turmas que concluíram o lançamento de ${disciplina}`} valor={`${concluidas} de ${turmas.length}`} />
           </div>
 
           <div className="grade grade-2">
             <Cartao titulo="Alunos por faixa de acerto">
-              <Histograma resultados={resultados} />
+              <Histograma contagem={contarFaixas(resultados)} />
             </Cartao>
-            <Cartao titulo="Acerto por disciplina">
+            <Cartao titulo="Acerto por disciplina" sub="As duas provas, lado a lado.">
               <Barras itens={porDisciplina.map((d) => ({ chave: d!.chave, rotulo: d!.chave, valor: d!.pct }))} />
-              <h3 className="subtitulo subtitulo-espaco">Acerto médio por ano</h3>
+              <h3 className="subtitulo subtitulo-espaco">Acerto médio por ano em {disciplina}</h3>
               <Barras itens={porAno.map((x) => ({ chave: String(x.serie), rotulo: serieNome(x.serie), valor: mediaPct(x.resultados), detalhe: plural(avaliados(x.resultados).length, 'aluno', 'alunos') }))} />
               <p className="texto-2 pequeno">Cada ano fez uma prova diferente.</p>
             </Cartao>
           </div>
 
           <Cartao
-            titulo="Acerto por questão"
+            titulo={`Acerto por questão · ${disciplina}`}
             sub="Todos os alunos do ano no colégio"
             acoes={<SeletorAno series={seriesComTurma} valor={serieQuestoes} aoMudar={setSerieQuestoes} />}
           >
             {caderno && avaliados(doAno).length ? (
               <>
                 <ColunasPorQuestao
-                  itens={analisarQuestoes(caderno, doAno).map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto, disciplina: a.questao.disciplina }))}
+                  itens={analisarQuestoes(caderno, doAno).map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto }))}
                 />
                 <LegendaFaixas />
               </>
@@ -133,7 +140,7 @@ export default function ResultadosColegio() {
             )}
           </Cartao>
 
-          <ComparacaoGrupos resultados={resultados} />
+          <ComparacaoGrupos grupos={resumoGrupos(resultados)} />
 
           <details className="cartao recolhivel" id="por-turma">
             <summary>Ver por turma</summary>
@@ -141,10 +148,12 @@ export default function ResultadosColegio() {
             <SeletorAno series={seriesComTurma} valor={serieTurmas} aoMudar={setSerieTurmas} />
             <TurmasDoAno
               resultados={resultados.filter((r) => r.turma.serie === serieTurmas)}
+              todos={todos.filter((r) => r.turma.serie === serieTurmas)}
               turmas={turmas.filter((t) => t.serie === serieTurmas)}
               serie={serieTurmas}
               anoLetivo={avaliacao.anoLetivo}
-              cadernoId={cadernoDaSerie(db, avaliacao.id, serieTurmas)?.id}
+              disciplina={disciplina}
+              cadernoId={cadernoDe(db, avaliacao.id, serieTurmas, disciplina)?.id}
             />
             <div className="form-acoes">
               <button className="btn btn-pequeno" onClick={exportarTurmas}>
@@ -155,6 +164,19 @@ export default function ResultadosColegio() {
         </>
       )}
     </>
+  )
+}
+
+/** Qual das duas provas os números mostram. */
+export function SeletorDisciplina(props: { valor: Disciplina; aoMudar: (disciplina: Disciplina) => void }) {
+  return (
+    <div className="segmentos segmentos-grandes" role="group" aria-label="Prova">
+      {DISCIPLINAS_DA_PROVA.map((d) => (
+        <button key={d} className={`segmento ${props.valor === d ? 'ativo' : ''}`} aria-pressed={props.valor === d} onClick={() => props.aoMudar(d)}>
+          {d}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -170,12 +192,21 @@ function SeletorAno(props: { series: Serie[]; valor: Serie; aoMudar: (serie: Ser
   )
 }
 
-function TurmasDoAno(props: { resultados: ResultadoAluno[]; turmas: Turma[]; serie: Serie; anoLetivo: number; cadernoId?: string }) {
+function TurmasDoAno(props: {
+  resultados: ResultadoAluno[]
+  todos: ResultadoAluno[]
+  turmas: Turma[]
+  serie: Serie
+  anoLetivo: number
+  disciplina: Disciplina
+  cadernoId?: string
+}) {
   const { resultados } = props
   const porTurma = agruparPor(resultados, (r) => r.turma.id)
+  const todosPorTurma = agruparPor(props.todos, (r) => r.turma.id)
   const linhas = [
-    { chave: 'colegio', rotulo: `Colégio, ${serieNome(props.serie)}`, rs: resultados, turmaId: null as string | null },
-    ...props.turmas.map((t) => ({ chave: t.id, rotulo: turmaNome(t), rs: porTurma.get(t.id) ?? [], turmaId: t.id })),
+    { chave: 'colegio', rotulo: `Colégio, ${serieNome(props.serie)}`, rs: resultados, todos: props.todos, turmaId: null as string | null },
+    ...props.turmas.map((t) => ({ chave: t.id, rotulo: turmaNome(t), rs: porTurma.get(t.id) ?? [], todos: todosPorTurma.get(t.id) ?? [], turmaId: t.id })),
   ]
   return (
     <>
@@ -184,8 +215,8 @@ function TurmasDoAno(props: { resultados: ResultadoAluno[]; turmas: Turma[]; ser
           <thead>
             <tr>
               <th>Turma</th>
-              <th>Alunos por faixa de acerto</th>
-              <th className="num">Acerto médio</th>
+              <th>Alunos por faixa de acerto ({props.disciplina})</th>
+              <th className="num">Acerto médio ({props.disciplina})</th>
               {DISCIPLINAS_DA_PROVA.map((d) => (
                 <th key={d} className="num">
                   {d}
@@ -198,7 +229,7 @@ function TurmasDoAno(props: { resultados: ResultadoAluno[]; turmas: Turma[]; ser
               const p = participacao(l.rs)
               const novos = avaliados(l.rs).filter((r) => ehNovo(r.aluno, props.anoLetivo)).length
               const poucos = p.avaliados < MINIMO_POR_TURMA
-              const porDisciplina = new Map(desempenhoPor(l.rs, (q) => q.disciplina).map((d) => [d.chave, d.pct]))
+              const porDisciplina = new Map(desempenhoPor(l.todos, (q) => q.disciplina).map((d) => [d.chave, d.pct]))
               return (
                 <tr key={l.chave} className={l.turmaId ? '' : 'linha-colegio'}>
                   <td>

@@ -6,7 +6,7 @@ import { compararChamada, descreverFaltando } from './alunos'
 import { quadroColegioQuestao } from './leitura'
 
 const q = (gabarito: Letra, disciplina = 'Português'): Questao => ({ gabarito, disciplina, habilidade: null, anulada: false })
-const caderno = (questoes: Questao[]): Caderno => ({ id: 'cad', avaliacaoId: 'av', serie: 3, numAlternativas: 4, usaFolhaRespostas: false, questoes, pdf: null })
+const caderno = (questoes: Questao[]): Caderno => ({ id: 'cad', avaliacaoId: 'av', serie: 3, disciplina: 'Português', numAlternativas: 4, usaFolhaRespostas: false, questoes, pdf: null })
 const colegio = (id: string): Colegio => ({ id, nome: id, cidade: '', uf: '', membroSolarId: null })
 const turma: Turma = { id: 't', colegioId: 'c1', anoLetivo: 2026, serie: 3, nome: 'A', turno: 'Manhã', professorIds: [] }
 

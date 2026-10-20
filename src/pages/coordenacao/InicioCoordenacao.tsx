@@ -6,7 +6,7 @@ import { descreverFaltando } from '../../lib/alunos'
 import {
   alunosAtivos,
   avaliacaoAtual,
-  cadernoDaSerie,
+  cadernosDaSerie,
   etapaAvaliacao,
   lancamentoDe,
   avisosPendentes,
@@ -18,7 +18,7 @@ import { dataCurta, dataLonga, descreverPrazo, diasAte, listaEmTexto, plural, pr
 import { iniciaisRepetidas } from '../../lib/iniciais'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import type { Avaliacao, Db, Turma } from '../../types'
+import type { Avaliacao, Caderno, Db, Turma } from '../../types'
 
 interface ItemAtencao {
   chave: string
@@ -85,17 +85,18 @@ export default function InicioCoordenacao() {
     }
   }
   if (avaliacao && ['aplicacao', 'lancamento'].includes(etapaAvaliacao(avaliacao))) {
-    const naoComecaram = turmas.filter((t) => {
-      const caderno = cadernoDaSerie(db, avaliacao.id, t.serie)
-      return caderno && progressoDe(db, caderno, t.id).status === 'nao_iniciado'
-    })
+    // Cada turma lança duas provas, Português e Matemática: conta cada uma.
+    const naoComecaram = turmas.flatMap((t) =>
+      cadernosDaSerie(db, avaliacao.id, t.serie).filter((caderno) => progressoDe(db, caderno, t.id).status === 'nao_iniciado'),
+    )
     if (naoComecaram.length) {
       itens.push({
         chave: 'andamento',
         texto: (
           <>
             {descreverPrazo(avaliacao.prazoLancamento)} para lançar as respostas, e{' '}
-            <strong>{plural(naoComecaram.length, 'turma ainda não começou', 'turmas ainda não começaram')}</strong>.
+            <strong>{plural(naoComecaram.length, 'lançamento ainda não começou', 'lançamentos ainda não começaram')}</strong> (cada turma lança a
+            prova de Português e a de Matemática).
           </>
         ),
         acao: { rotulo: 'Ver andamento', para: '#andamento' },
@@ -143,7 +144,7 @@ export default function InicioCoordenacao() {
       <div className="grade grade-2">
         <Cartao
           titulo="Provas"
-          sub="As provas de todos os anos, para baixar e imprimir. Só a coordenação tem acesso."
+          sub="As provas de Português e de Matemática de todos os anos, para baixar e imprimir. Só a coordenação tem acesso."
           acoes={
             <Link className="btn" to={`${base}/provas`}>
               <Printer size={16} aria-hidden /> Ver provas
@@ -196,11 +197,15 @@ function PrimeirosPassos() {
 /** O andamento do lançamento, sem médias e sem vermelho: serve para ajudar, não para cobrar. */
 function Andamento({ db, avaliacao, turmas, quem }: { db: Db; avaliacao: Avaliacao; turmas: Turma[]; quem: string }) {
   const [copiado, setCopiado] = useState<string | null>(null)
-  const linhas = turmas.flatMap((turma) => {
-    const caderno = cadernoDaSerie(db, avaliacao.id, turma.serie)
-    if (!caderno) return []
-    return [{ turma, caderno, progresso: progressoDe(db, caderno, turma.id), lancamento: lancamentoDe(db, caderno.id, turma.id) }]
-  })
+  // Uma linha por turma e prova (Português e Matemática).
+  const linhas = turmas.flatMap((turma) =>
+    cadernosDaSerie(db, avaliacao.id, turma.serie).map((caderno) => ({
+      turma,
+      caderno,
+      progresso: progressoDe(db, caderno, turma.id),
+      lancamento: lancamentoDe(db, caderno.id, turma.id),
+    })),
+  )
   const grupos = [
     { titulo: 'Ainda não começaram', linhas: linhas.filter((l) => l.progresso.status === 'nao_iniciado') },
     { titulo: 'Em andamento', linhas: linhas.filter((l) => l.progresso.status === 'em_andamento') },
@@ -208,18 +213,18 @@ function Andamento({ db, avaliacao, turmas, quem }: { db: Db; avaliacao: Avaliac
   ]
   const dias = diasAte(avaliacao.prazoLancamento)
 
-  function lembrete(turma: Turma, lancados: number, total: number): string {
+  function lembrete(turma: Turma, caderno: Caderno, lancados: number, total: number): string {
     const nomes = turma.professorIds.map((id) => db.professores.find((p) => p.id === id)?.nome).filter((n): n is string => Boolean(n))
     const saudacao = nomes.length ? `Olá, ${listaEmTexto(nomes.map(primeiroNome))}!` : 'Olá!'
     const situacao = lancados ? `está em ${lancados} de ${total} alunos` : 'ainda não começou'
-    return `${saudacao} O lançamento da ${avaliacao.titulo} do ${turmaNome(turma)} ${situacao}, e o prazo vai até ${dataCurta(avaliacao.prazoLancamento)}. Se precisar de ajuda com o site, é só me chamar. ${quem}`
+    return `${saudacao} O lançamento da prova de ${caderno.disciplina} da ${avaliacao.titulo} do ${turmaNome(turma)} ${situacao}, e o prazo vai até ${dataCurta(avaliacao.prazoLancamento)}. Se precisar de ajuda com o site, é só me chamar. ${quem}`
   }
 
-  async function copiar(turma: Turma, lancados: number, total: number) {
-    const texto = lembrete(turma, lancados, total)
+  async function copiar(turma: Turma, caderno: Caderno, lancados: number, total: number) {
+    const texto = lembrete(turma, caderno, lancados, total)
     try {
       await navigator.clipboard.writeText(texto)
-      setCopiado(turma.id)
+      setCopiado(`${turma.id}-${caderno.id}`)
     } catch {
       window.prompt('Copie o lembrete:', texto)
     }
@@ -242,9 +247,11 @@ function Andamento({ db, avaliacao, turmas, quem }: { db: Db; avaliacao: Avaliac
             ) : (
               <ul className="andamento-lista">
                 {grupo.linhas.map(({ turma, caderno, progresso, lancamento }) => (
-                  <li key={turma.id}>
+                  <li key={`${turma.id}-${caderno.id}`}>
                     <div className="andamento-turma">
-                      <strong>{turmaNome(turma)}</strong>
+                      <strong>
+                        {turmaNome(turma)} · {caderno.disciplina}
+                      </strong>
                       <span className="texto-2 pequeno">
                         {turma.professorIds.map((id) => db.professores.find((p) => p.id === id)?.nome).filter(Boolean).join(', ') || 'Sem professor'}
                       </span>
@@ -266,8 +273,8 @@ function Andamento({ db, avaliacao, turmas, quem }: { db: Db; avaliacao: Avaliac
                         </Link>
                       ) : (
                         <>
-                          <button className="btn btn-pequeno btn-fantasma" onClick={() => copiar(turma, progresso.lancados, progresso.total)}>
-                            <ClipboardCopy size={15} aria-hidden /> {copiado === turma.id ? 'Lembrete copiado' : 'Copiar lembrete'}
+                          <button className="btn btn-pequeno btn-fantasma" onClick={() => copiar(turma, caderno, progresso.lancados, progresso.total)}>
+                            <ClipboardCopy size={15} aria-hidden /> {copiado === `${turma.id}-${caderno.id}` ? 'Lembrete copiado' : 'Copiar lembrete'}
                           </button>
                           <Link className="btn btn-pequeno btn-fantasma" to={`/coordenacao/lancar/${caderno.id}/${turma.id}`}>
                             <ClipboardList size={15} aria-hidden /> Ajudar a lançar

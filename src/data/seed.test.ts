@@ -61,9 +61,16 @@ describe('dados de exemplo', () => {
     }
   })
 
-  it('têm só Português e Matemática, com folha de respostas só no 5º ano', () => {
+  it('têm uma prova de Português e outra de Matemática por ano, com folha de respostas só no 5º ano', () => {
+    for (const avaliacao of db.avaliacoes) {
+      for (const serie of [1, 2, 3, 4, 5]) {
+        const doAno = db.cadernos.filter((c) => c.avaliacaoId === avaliacao.id && c.serie === serie)
+        expect(doAno.map((c) => c.disciplina).sort()).toEqual(['Matemática', 'Português'])
+      }
+    }
     for (const caderno of db.cadernos) {
-      expect(new Set(caderno.questoes.map((q) => q.disciplina))).toEqual(new Set(['Português', 'Matemática']))
+      expect(new Set(caderno.questoes.map((q) => q.disciplina))).toEqual(new Set([caderno.disciplina]))
+      expect(caderno.questoes).toHaveLength(caderno.serie <= 2 ? 8 : 10)
       expect(caderno.usaFolhaRespostas).toBe(caderno.serie === 5)
     }
   })
@@ -134,21 +141,22 @@ describe('dados de exemplo', () => {
   })
 
   it('trazem uma turma de cada situação no colégio da versão de teste', () => {
-    const caderno = (serie: number) => db.cadernos.find((c) => c.id === `cad-2026-${serie}`)!
-    expect(progressoDe(db, caderno(1), 'tur-monte-verde-2026-1A').status).toBe('nao_iniciado')
-    expect(progressoDe(db, caderno(3), 'tur-monte-verde-2026-3A').status).toBe('em_andamento')
-    expect(progressoDe(db, caderno(4), 'tur-monte-verde-2026-4A').status).toBe('concluido')
+    const caderno = (id: string) => db.cadernos.find((c) => c.id === `cad-2026-${id}`)!
+    expect(progressoDe(db, caderno('1-pt'), 'tur-monte-verde-2026-1A').status).toBe('nao_iniciado')
+    expect(progressoDe(db, caderno('3-pt'), 'tur-monte-verde-2026-3A').status).toBe('concluido')
+    expect(progressoDe(db, caderno('3-mat'), 'tur-monte-verde-2026-3A').status).toBe('em_andamento')
+    expect(progressoDe(db, caderno('4-mat'), 'tur-monte-verde-2026-4A').status).toBe('concluido')
   })
 
   it('só disparam o alerta de gabarito suspeito na questão errada de propósito', () => {
     const suspeitas: string[] = []
     for (const caderno of db.cadernos) {
-      const resultados = coletarResultados(db, { avaliacaoId: caderno.avaliacaoId, serie: caderno.serie })
+      const resultados = coletarResultados(db, { avaliacaoId: caderno.avaliacaoId, cadernoId: caderno.id })
       for (const analise of analisarQuestoes(caderno, resultados)) {
         if (analise.alertas.includes('gabarito_suspeito')) suspeitas.push(`${caderno.id}#${analise.indice + 1}`)
       }
     }
-    expect(suspeitas).toEqual(['cad-2026-4#12'])
+    expect(suspeitas).toEqual(['cad-2026-4-mat#2'])
   })
 
   it('põem o professor, a coordenação e a Solar de teste juntos, no mesmo colégio', () => {
@@ -166,7 +174,7 @@ describe('dados de exemplo', () => {
     expect(avisos).toHaveLength(3)
     expect(avisos.filter((e) => !e.ciente)).toHaveLength(2)
     const inclusao = avisos.find((e) => e.tipo === 'inclusao')!
-    expect(lancamentoDe(db, 'cad-2026-3', inclusao.turmaId!)!.respostas[inclusao.alunoId!]).toBeDefined()
+    expect(lancamentoDe(db, 'cad-2026-3-pt', inclusao.turmaId!)!.respostas[inclusao.alunoId!]).toBeDefined()
     expect(inclusao.texto).toMatch(/^Incluiu o nº \d+ \(L\.M\.R\.\) na lista: sexo feminino e entrou no colégio em 2026\.$/)
   })
 })

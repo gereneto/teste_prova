@@ -9,8 +9,9 @@ export const TURNOS: Turno[] = ['Manhã', 'Tarde', 'Integral']
 export const LETRAS = ['A', 'B', 'C', 'D', 'E'] as const
 export type Letra = (typeof LETRAS)[number]
 
-/** A prova da Solar tem só estas duas disciplinas. */
-export const DISCIPLINAS_DA_PROVA = ['Português', 'Matemática']
+/** A prova da Solar tem só estas duas disciplinas, cada uma num caderno próprio (decisão de 2026-10-19). */
+export type Disciplina = 'Português' | 'Matemática'
+export const DISCIPLINAS_DA_PROVA: Disciplina[] = ['Português', 'Matemática']
 
 // Cada questão lançada vira um caractere na string `marcas` da resposta do aluno:
 // uma letra, em branco, rasurada (mais de uma marcada) ou ainda não lançada.
@@ -94,7 +95,7 @@ export interface Aluno {
   saida?: { em: string; motivo: MotivoSaida }
 }
 
-/** A avaliação anual: uma prova para cada ano do Fundamental I. */
+/** A avaliação anual: para cada ano do Fundamental I, uma prova de Português e outra de Matemática. */
 export interface Avaliacao {
   id: Id
   titulo: string
@@ -124,11 +125,15 @@ export interface PdfCaderno {
   enviadoEm: string
 }
 
-/** A prova de um ano dentro de uma avaliação. No código continua "caderno"; nas telas é "a prova do 3º ano". */
+/**
+ * A prova de um ano e uma disciplina dentro de uma avaliação. No código continua "caderno"; nas telas é
+ * "a prova de Matemática do 3º ano". Todas as questões são da disciplina do caderno.
+ */
 export interface Caderno {
   id: Id
   avaliacaoId: Id
   serie: Serie
+  disciplina: Disciplina
   numAlternativas: 4 | 5
   /** Só o 5º ano marca numa folha de respostas separada; os demais marcam na própria prova. */
   usaFolhaRespostas: boolean

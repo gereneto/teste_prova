@@ -21,34 +21,29 @@ import {
   type Tom,
 } from '../../components/ui'
 import { buscarHabilidade, ordemDisciplina } from '../../data/bncc'
-import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDaSerie, etapaAvaliacao, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
-import {
-  agruparPor,
-  agruparPorAnoDeIngresso,
-  analisarQuestoes,
-  avaliados,
-  coletarResultados,
-  contarFaixas,
-  desempenhoPor,
-  ehNovo,
-  faixaDe,
-  MINIMO_PARA_ALERTAS,
-  mediaPct,
-  NOMES_FAIXAS,
-  participacao,
-  progressoDe,
-  separarPorIngresso,
-  separarPorSexo,
-  type AlertaQuestao,
-  type AnaliseQuestao,
-  type ResultadoAluno,
-} from '../../lib/estatisticas'
+import { avaliacaoAtual, avaliacoesOrdenadas, cadernoDe, etapaAvaliacao, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
+import { faixaDe, MINIMO_PARA_ALERTAS, NOMES_FAIXAS, type AlertaQuestao, type AnaliseQuestao } from '../../lib/estatisticas'
 import { AVISO_COMPARACAO, baixarCsv, paraNomeDeArquivo } from '../../lib/exportar'
 import { compararTexto, pct, plural, resumir, serieNome, turmaNome } from '../../lib/formato'
-import { LIMITE_METADE, MINIMO_QUADRO, quadroColegioQuestao } from '../../lib/leitura'
+import { LIMITE_METADE, MINIMO_QUADRO } from '../../lib/leitura'
+import {
+  analisarQuestoesAg,
+  avaliadosAg,
+  desempenhoAg,
+  faixasAg,
+  grupoAg,
+  mediaAg,
+  participacaoAg,
+  progressoAg,
+  quadroColegioQuestaoAg,
+  resumoGruposAg,
+  type AgregadoTurma,
+} from '../../lib/rede'
 import { useDb } from '../../store/db'
+import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { BRANCO, LETRAS, RASURA, SERIES, type Caderno, type Colegio, type Db, type Serie } from '../../types'
+import { BRANCO, DISCIPLINAS_DA_PROVA, LETRAS, RASURA, SERIES, type Caderno, type Colegio, type Db, type Disciplina, type Serie } from '../../types'
+import { SeletorDisciplina } from '../coordenacao/ResultadosColegio'
 
 const ALERTAS: Record<AlertaQuestao, { rotulo: string; texto: string; tom: Tom }> = {
   gabarito_suspeito: {
@@ -70,8 +65,13 @@ const PCT_FALTAS_ALTO = 20
 
 const nomeCurto = (colegio: Colegio) => colegio.nome.replace(/^(Colégio|Escola)\s+/, '')
 
+/**
+ * Os resultados da rede para a Solar: somados por turma e prova (lib/rede.ts), nunca aluno a aluno. Os números são de
+ * uma prova (Português ou Matemática); "Acerto por disciplina" compara as duas.
+ */
 export default function ResultadosRede() {
   const db = useDb()
+  const rede = useRede()
   const perfil = usePerfil()
   const [params, setParams] = useSearchParams()
   const [todasHabilidades, setTodasHabilidades] = useState(false)
@@ -81,8 +81,20 @@ export default function ResultadosRede() {
   const avaliacoes = avaliacoesOrdenadas(db)
   const avaliacao = db.avaliacoes.find((a) => a.id === params.get('avaliacao')) ?? avaliacaoAtual(db) ?? avaliacoes[0]
   const serie: Serie | null = SERIES.find((s) => String(s) === params.get('serie')) ?? null
+  const disciplina: Disciplina = DISCIPLINAS_DA_PROVA.find((d) => d === params.get('disciplina')) ?? DISCIPLINAS_DA_PROVA[0]
   const colegioId = db.colegios.find((c) => c.id === params.get('colegio'))?.id ?? null
-  const resultados = useMemo(() => (avaliacao ? coletarResultados(db, { avaliacaoId: avaliacao.id, serie, colegioId }) : []), [db, avaliacao, serie, colegioId])
+  // As duas provas (para comparar as disciplinas) e só a escolhida (para todo o resto).
+  const ambas = useMemo(
+    () =>
+      avaliacao
+        ? rede.painel.turmas.filter((ag) => {
+            const caderno = rede.cadernoDe(ag.caderno)
+            return caderno?.avaliacaoId === avaliacao.id && (!serie || caderno.serie === serie) && (!colegioId || rede.colegioDaTurma(ag.turma) === colegioId)
+          })
+        : [],
+    [rede, avaliacao, serie, colegioId],
+  )
+  const ags = useMemo(() => ambas.filter((ag) => rede.cadernoDe(ag.caderno)?.disciplina === disciplina), [ambas, rede, disciplina])
 
   function filtrar(chave: string, valor: string | null) {
     const novos = new URLSearchParams(params)
@@ -93,53 +105,54 @@ export default function ResultadosRede() {
 
   if (!avaliacao) return <Vazio titulo="Ainda não há avaliações" />
 
-  const lista = avaliados(resultados)
-  const part = participacao(resultados)
-  const media = mediaPct(resultados)
+  const n = avaliadosAg(ags)
+  const part = participacaoAg(ags)
+  const media = mediaAg(ags, rede.cadernoDe)
   const colegios = [...db.colegios].sort((a, b) => compararTexto(a.nome, b.nome))
   const colegio = db.colegios.find((c) => c.id === colegioId)
-  const escopo = [serie ? serieNome(serie) : 'todos os anos', colegio ? colegio.nome : 'todos os colégios'].join(' · ')
-  const nomeArquivo = paraNomeDeArquivo([avaliacao.titulo, serie ? serieNome(serie) : '', colegio?.nome ?? ''].join(' '))
+  const escopo = [disciplina, serie ? serieNome(serie) : 'todos os anos', colegio ? colegio.nome : 'todos os colégios'].join(' · ')
+  const nomeArquivo = paraNomeDeArquivo([avaliacao.titulo, disciplina, serie ? serieNome(serie) : '', colegio?.nome ?? ''].join(' '))
   const anoLetivo = avaliacao.anoLetivo
+  const doColegio = (c: Colegio) => ags.filter((ag) => rede.colegioDaTurma(ag.turma) === c.id)
 
   // Turmas sempre na mesma ordem: colégio, ano e letra. Sem ordenar por média e sem o nome do professor.
-  const turmas = [...agruparPor(resultados, (r) => r.turma)]
-    .map(([turma, rs]) => {
-      const caderno = cadernoDaSerie(db, avaliacao.id, turma.serie)
-      const p = participacao(rs)
-      const faixas = contarFaixas(rs)
-      const total = faixas.reduce((s, v) => s + v, 0)
-      return {
-        turma,
-        colegio: rs[0].colegio,
-        caderno,
-        resultados: rs,
-        participacao: p,
-        media: mediaPct(rs),
-        faixas,
-        novos: avaliados(rs).filter((r) => ehNovo(r.aluno, anoLetivo)).length,
-        pctAbaixo: total ? (100 * (faixas[0] + faixas[1])) / total : 0,
-        pctFaltas: p.lancados ? (100 * p.faltas) / p.lancados : 0,
-        progresso: caderno ? progressoDe(db, caderno, turma.id) : null,
-      }
+  const turmas = ags
+    .flatMap((ag) => {
+      const turma = db.turmas.find((t) => t.id === ag.turma)
+      const doTurma = turma && db.colegios.find((c) => c.id === turma.colegioId)
+      if (!turma || !doTurma) return []
+      const p = participacaoAg([ag])
+      const total = ag.faixas.reduce((s, v) => s + v, 0)
+      return [
+        {
+          ag,
+          turma,
+          colegio: doTurma,
+          caderno: rede.cadernoDe(ag.caderno),
+          participacao: p,
+          media: mediaAg([ag], rede.cadernoDe),
+          faixas: ag.faixas,
+          novos: ag.grupos.novos?.n ?? 0,
+          pctAbaixo: total ? (100 * (ag.faixas[0] + ag.faixas[1])) / total : 0,
+          pctFaltas: p.lancados ? (100 * p.faltas) / p.lancados : 0,
+          progresso: progressoAg(ag),
+        },
+      ]
     })
     .sort((a, b) => compararTexto(a.colegio.nome, b.colegio.nome) || a.turma.serie - b.turma.serie || compararTexto(a.turma.nome, b.turma.nome))
-  const turmasVisiveis = soApoio ? turmas.filter((t) => avaliados(t.resultados).length >= 5 && t.pctAbaixo >= PCT_APOIO) : turmas
-  const concluidas = turmas.filter((t) => t.progresso?.status === 'concluido').length
+  const turmasVisiveis = soApoio ? turmas.filter((t) => t.ag.avaliados >= 5 && t.pctAbaixo >= PCT_APOIO) : turmas
+  const concluidas = turmas.filter((t) => t.progresso.status === 'concluido').length
   const porColegio = colegios
     .filter((c) => !colegioId || c.id === colegioId)
-    .map((c) => {
-      const rs = resultados.filter((r) => r.colegio.id === c.id)
-      return { chave: c.id, rotulo: c.nome, valor: mediaPct(rs), detalhe: plural(avaliados(rs).length, 'aluno', 'alunos') }
-    })
+    .map((c) => ({ chave: c.id, rotulo: c.nome, valor: mediaAg(doColegio(c), rede.cadernoDe), detalhe: plural(avaliadosAg(doColegio(c)), 'aluno', 'alunos') }))
   const porAno = SERIES.map((s) => {
-    const rs = resultados.filter((r) => r.turma.serie === s)
-    return { chave: String(s), rotulo: serieNome(s), valor: mediaPct(rs), detalhe: plural(avaliados(rs).length, 'aluno', 'alunos') }
+    const doAno = ags.filter((ag) => rede.cadernoDe(ag.caderno)?.serie === s)
+    return { chave: String(s), rotulo: serieNome(s), valor: mediaAg(doAno, rede.cadernoDe), detalhe: plural(avaliadosAg(doAno), 'aluno', 'alunos') }
   }).filter((x) => x.valor != null)
-  const porDisciplina = desempenhoPor(resultados, (q) => q.disciplina).sort((a, b) => ordemDisciplina(a.chave, b.chave))
-  const porHabilidade = desempenhoPor(resultados, (q) => q.habilidade).sort((a, b) => a.pct - b.pct)
-  const caderno = serie ? cadernoDaSerie(db, avaliacao.id, serie) : undefined
-  const analise = caderno ? analisarQuestoes(caderno, resultados) : []
+  const porDisciplina = desempenhoAg(ambas, rede.cadernoDe, (q) => q.disciplina).sort((a, b) => ordemDisciplina(a.chave, b.chave))
+  const porHabilidade = desempenhoAg(ags, rede.cadernoDe, (q) => q.habilidade).sort((a, b) => a.pct - b.pct)
+  const caderno = serie ? cadernoDe(db, avaliacao.id, serie, disciplina) : undefined
+  const analise = caderno ? analisarQuestoesAg(caderno, ags) : []
 
   function exportarTurmas() {
     baixarCsv(
@@ -175,21 +188,24 @@ export default function ResultadosRede() {
   }
 
   function exportarGrupos() {
-    const grupos = separarPorIngresso(resultados)
-    const sexo = separarPorSexo(resultados)
+    // Os mesmos grupos de agruparPorAnoDeIngresso: os novos, cada um dos três anos anteriores e, por fim, quem entrou antes.
+    const anos = [`${anoLetivo} (novos)`, String(anoLetivo - 1), String(anoLetivo - 2), String(anoLetivo - 3), `Até ${anoLetivo - 4}`]
     const linhas = [
-      { rotulo: 'Novos no colégio', lista: grupos.novos },
-      { rotulo: 'Antigos', lista: grupos.antigos },
-      ...agruparPorAnoDeIngresso(resultados).map((g) => ({ rotulo: `Entraram em ${g.rotulo}`, lista: g.resultados })),
-      { rotulo: 'Sem ano de entrada informado', lista: grupos.sem_ano },
-      { rotulo: 'Meninas', lista: sexo.F },
-      { rotulo: 'Meninos', lista: sexo.M },
-      { rotulo: 'Sem sexo informado', lista: sexo.sem },
+      { rotulo: 'Novos no colégio', chave: 'novos' },
+      { rotulo: 'Antigos', chave: 'antigos' },
+      ...anos.map((rotulo, i) => ({ rotulo: `Entraram em ${rotulo}`, chave: `ha${i}` })),
+      { rotulo: 'Sem ano de entrada informado', chave: 'sem_ano' },
+      { rotulo: 'Meninas', chave: 'F' },
+      { rotulo: 'Meninos', chave: 'M' },
+      { rotulo: 'Sem sexo informado', chave: 'sem_sexo' },
     ]
     baixarCsv(
       `grupos-${nomeArquivo}.csv`,
       ['Grupo', 'Alunos avaliados', 'Acerto médio (%)', ...nomesFaixasCsv],
-      linhas.map((g) => [g.rotulo, avaliados(g.lista).length, mediaPct(g.lista), ...contarFaixas(g.lista)]),
+      linhas.map((g) => {
+        const grupo = grupoAg(ags, g.chave, rede.cadernoDe)
+        return [g.rotulo, grupo.n, grupo.media, ...grupo.faixas]
+      }),
     )
   }
 
@@ -222,6 +238,8 @@ export default function ResultadosRede() {
   return (
     <>
       <Cabecalho sobretitulo="Resultados" titulo="Resultados da rede" subtitulo="A Solar vê os resultados por turma e por colégio. A lista de alunos fica com cada colégio." />
+
+      <SeletorDisciplina valor={disciplina} aoMudar={(d) => filtrar('disciplina', d)} />
 
       <div className="cartao filtros">
         <label className="campo">
@@ -259,17 +277,17 @@ export default function ResultadosRede() {
         <div className="filtros-exportar">
           <span className="texto-2 pequeno">Baixar planilha</span>
           <div className="form-acoes">
-            <button className="btn btn-pequeno" onClick={exportarTurmas} disabled={!lista.length}>
+            <button className="btn btn-pequeno" onClick={exportarTurmas} disabled={!n}>
               <FileSpreadsheet size={15} aria-hidden /> Turmas
             </button>
-            <button className="btn btn-pequeno" onClick={exportarHabilidades} disabled={!lista.length}>
+            <button className="btn btn-pequeno" onClick={exportarHabilidades} disabled={!n}>
               <FileSpreadsheet size={15} aria-hidden /> Habilidades
             </button>
-            <button className="btn btn-pequeno" onClick={exportarGrupos} disabled={!lista.length}>
+            <button className="btn btn-pequeno" onClick={exportarGrupos} disabled={!n}>
               <FileSpreadsheet size={15} aria-hidden /> Grupos de alunos
             </button>
             {caderno && (
-              <button className="btn btn-pequeno" onClick={exportarQuestoes} disabled={!lista.length}>
+              <button className="btn btn-pequeno" onClick={exportarQuestoes} disabled={!n}>
                 <FileSpreadsheet size={15} aria-hidden /> Questões
               </button>
             )}
@@ -279,11 +297,11 @@ export default function ResultadosRede() {
 
       {emLancamento && (
         <Aviso tom="atencao">
-          Lançamento em andamento: {concluidas} de {plural(turmas.length, 'turma concluída', 'turmas concluídas')}. Os números ainda vão mudar.
+          Lançamento de {disciplina} em andamento: {concluidas} de {plural(turmas.length, 'turma concluída', 'turmas concluídas')}. Os números ainda vão mudar.
         </Aviso>
       )}
 
-      {!lista.length ? (
+      {!n ? (
         <Vazio titulo="Ainda não há alunos avaliados nesta seleção">Os resultados aparecem assim que os professores lançam as respostas.</Vazio>
       ) : (
         <>
@@ -294,14 +312,14 @@ export default function ResultadosRede() {
           <div className="grade grade-kpis grade-kpis-3">
             <Kpi rotulo="Acerto médio" valor={pct(media)} detalhe={escopo} />
             <Kpi rotulo="Alunos avaliados" valor={part.avaliados.toLocaleString('pt-BR')} detalhe={`${part.lancados} de ${part.matriculados} já lançados · ${plural(part.faltas, 'falta', 'faltas')}`} />
-            <Kpi rotulo="Turmas que concluíram o lançamento" valor={`${concluidas} de ${turmas.length}`} />
+            <Kpi rotulo={`Turmas que concluíram o lançamento de ${disciplina}`} valor={`${concluidas} de ${turmas.length}`} />
           </div>
 
           <div className="grade grade-2">
             <Cartao titulo="Alunos por faixa de acerto" sub={escopo}>
-              <Histograma resultados={resultados} />
+              <Histograma contagem={faixasAg(ags)} />
             </Cartao>
-            <Cartao titulo="Acerto por disciplina">
+            <Cartao titulo="Acerto por disciplina" sub="As duas provas, lado a lado.">
               <Barras itens={porDisciplina.map((d) => ({ chave: d.chave, rotulo: d.chave, valor: d.pct, detalhe: plural(d.questoes, 'questão', 'questões') }))} />
             </Cartao>
           </div>
@@ -322,15 +340,15 @@ export default function ResultadosRede() {
           )}
 
           {caderno && (
-            <Cartao titulo={`Acerto por questão · prova do ${serieNome(caderno.serie)}`} sub={escopo}>
-              <ColunasPorQuestao itens={analise.map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto, disciplina: a.questao.disciplina }))} />
+            <Cartao titulo={`Acerto por questão · prova de ${disciplina} do ${serieNome(caderno.serie)}`} sub={escopo}>
+              <ColunasPorQuestao itens={analise.map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto }))} />
               <LegendaFaixas />
             </Cartao>
           )}
 
-          <ComparacaoGrupos resultados={resultados} />
+          <ComparacaoGrupos grupos={resumoGruposAg(ags, rede.cadernoDe, anoLetivo)} />
 
-          <Participacao resultados={resultados} colegios={colegios.filter((c) => !colegioId || c.id === colegioId)} />
+          <Participacao ags={ags} rede={rede} colegios={colegios.filter((c) => !colegioId || c.id === colegioId)} />
 
           <Cartao
             titulo="Turmas"
@@ -367,7 +385,7 @@ export default function ResultadosRede() {
                       <td>{t.colegio.nome}</td>
                       <td>
                         {t.caderno ? <Link to={`/solar/resultados/${t.caderno.id}/${t.turma.id}`}>{turmaNome(t.turma)}</Link> : turmaNome(t.turma)}{' '}
-                        {t.progresso && t.progresso.status !== 'concluido' && <Selo tom={t.progresso.status === 'em_andamento' ? 'ambar' : 'neutro'}>{NOMES_STATUS[t.progresso.status]}</Selo>}
+                        {t.progresso.status !== 'concluido' && <Selo tom={t.progresso.status === 'em_andamento' ? 'ambar' : 'neutro'}>{NOMES_STATUS[t.progresso.status]}</Selo>}
                       </td>
                       <td className="num">
                         {t.participacao.avaliados} de {t.participacao.matriculados}
@@ -433,11 +451,11 @@ export default function ResultadosRede() {
 
           {caderno ? (
             <>
-              {!colegioId && <QuadroColegios caderno={caderno} resultados={resultados} colegios={colegios} />}
+              {!colegioId && <QuadroColegios caderno={caderno} ags={ags} rede={rede} colegios={colegios} />}
               <AnaliseQuestoes caderno={caderno} analise={analise} editar={editarRede} />
             </>
           ) : (
-            <EscolherAno db={db} avaliacaoId={avaliacao.id} resultados={resultados} aoEscolher={(s) => filtrar('serie', String(s))} />
+            <EscolherAno db={db} avaliacaoId={avaliacao.id} disciplina={disciplina} ags={ags} rede={rede} aoEscolher={(s) => filtrar('serie', String(s))} />
           )}
         </>
       )}
@@ -445,7 +463,7 @@ export default function ResultadosRede() {
   )
 }
 
-function Participacao({ resultados, colegios }: { resultados: ResultadoAluno[]; colegios: Colegio[] }) {
+function Participacao({ ags, rede, colegios }: { ags: AgregadoTurma[]; rede: Rede; colegios: Colegio[] }) {
   return (
     <Cartao titulo="Participação por colégio" sub={`Quando muitos alunos faltam (${PCT_FALTAS_ALTO}% ou mais), a média diz pouco.`}>
       <div className="tabela-rolagem">
@@ -462,7 +480,7 @@ function Participacao({ resultados, colegios }: { resultados: ResultadoAluno[]; 
           </thead>
           <tbody>
             {colegios.map((c) => {
-              const p = participacao(resultados.filter((r) => r.colegio.id === c.id))
+              const p = participacaoAg(ags.filter((ag) => rede.colegioDaTurma(ag.turma) === c.id))
               const pctFaltas = p.lancados ? (100 * p.faltas) / p.lancados : 0
               return (
                 <tr key={c.id}>
@@ -486,12 +504,12 @@ function Participacao({ resultados, colegios }: { resultados: ResultadoAluno[]; 
 }
 
 /** Cada questão da prova de um ano, colégio por colégio, com uma leitura pronta. */
-function QuadroColegios({ caderno, resultados, colegios }: { caderno: Caderno; resultados: ResultadoAluno[]; colegios: Colegio[] }) {
-  const linhas = quadroColegioQuestao(caderno, resultados, colegios)
+function QuadroColegios({ caderno, ags, rede, colegios }: { caderno: Caderno; ags: AgregadoTurma[]; rede: Rede; colegios: Colegio[] }) {
+  const linhas = quadroColegioQuestaoAg(caderno, ags, colegios, rede.colegioDaTurma)
   const comLeitura = linhas.filter((l) => l.leitura)
   return (
     <Cartao
-      titulo={`Pontos de melhoria · prova do ${serieNome(caderno.serie)}`}
+      titulo={`Pontos de melhoria · prova de ${caderno.disciplina} do ${serieNome(caderno.serie)}`}
       sub={`Acerto de cada questão em cada colégio. Menos de ${LIMITE_METADE}% de acertos em todos os colégios: rever a questão ou o material. Menos da metade só em um ou dois: apoiar esses colégios.`}
       acoes={<Explicacao>Colégios com menos de {MINIMO_QUADRO} alunos avaliados nesta prova aparecem em cinza: com tão poucos alunos, a diferença pode ser acaso.</Explicacao>}
     >
@@ -547,14 +565,14 @@ function QuadroColegios({ caderno, resultados, colegios }: { caderno: Caderno; r
   )
 }
 
-function EscolherAno(props: { db: Db; avaliacaoId: string; resultados: ResultadoAluno[]; aoEscolher: (serie: Serie) => void }) {
+function EscolherAno(props: { db: Db; avaliacaoId: string; disciplina: Disciplina; ags: AgregadoTurma[]; rede: Rede; aoEscolher: (serie: Serie) => void }) {
   const opcoes = SERIES.map((serie) => {
-    const caderno = cadernoDaSerie(props.db, props.avaliacaoId, serie)
-    const alertas = caderno ? analisarQuestoes(caderno, props.resultados.filter((r) => r.turma.serie === serie)).filter((a) => a.alertas.includes('gabarito_suspeito')).length : 0
+    const caderno = cadernoDe(props.db, props.avaliacaoId, serie, props.disciplina)
+    const alertas = caderno ? analisarQuestoesAg(caderno, props.ags).filter((a) => a.alertas.includes('gabarito_suspeito')).length : 0
     return { serie, caderno, alertas }
   }).filter((o) => o.caderno)
   return (
-    <Cartao titulo="Análise por questão e pontos de melhoria" sub="Cada ano tem uma prova diferente: escolha o ano para ver cada questão, colégio por colégio.">
+    <Cartao titulo="Análise por questão e pontos de melhoria" sub={`Cada ano tem uma prova diferente: escolha o ano para ver cada questão da prova de ${props.disciplina}, colégio por colégio.`}>
       <div className="chips">
         {opcoes.map((o) => (
           <button key={o.serie} className="btn" onClick={() => props.aoEscolher(o.serie)}>
@@ -576,7 +594,7 @@ function AnaliseQuestoes({ caderno, analise, editar }: { caderno: Caderno; anali
 
   return (
     <Cartao
-      titulo={`Análise por questão · prova do ${serieNome(caderno.serie)}`}
+      titulo={`Análise por questão · prova de ${caderno.disciplina} do ${serieNome(caderno.serie)}`}
       sub={`${plural(n, 'aluno avaliado', 'alunos avaliados')}${n < MINIMO_PARA_ALERTAS ? ` · os alertas aparecem a partir de ${MINIMO_PARA_ALERTAS} alunos` : ''}`}
       acoes={
         <>
@@ -584,7 +602,7 @@ function AnaliseQuestoes({ caderno, analise, editar }: { caderno: Caderno; anali
             <input type="checkbox" checked={soComAlerta} onChange={(e) => setSoComAlerta(e.target.checked)} />
             Só questões com alerta ({comAlerta.length})
           </label>
-          <Link className="btn btn-pequeno" to={`/solar/avaliacoes/${caderno.avaliacaoId}?serie=${caderno.serie}`}>
+          <Link className="btn btn-pequeno" to={`/solar/avaliacoes/${caderno.avaliacaoId}?serie=${caderno.serie}&disciplina=${caderno.disciplina}`}>
             <Pencil size={15} aria-hidden /> {editar ? 'Editar gabarito' : 'Ver a prova'}
           </Link>
         </>

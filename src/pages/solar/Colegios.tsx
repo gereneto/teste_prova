@@ -2,10 +2,11 @@ import { ChevronRight, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Cabecalho, Cartao, Selo, Vazio } from '../../components/ui'
-import { alunosAtivos, contatoDoColegio, membroSolarDoColegio, permissoesDe, pessoaDoPerfil, turmasDoColegio } from '../../lib/consultas'
+import { contatoDoColegio, membroSolarDoColegio, permissoesDe, pessoaDoPerfil, turmasDoColegio } from '../../lib/consultas'
 import { compararTexto, plural } from '../../lib/formato'
 import { criarColegio, type DadosColegio } from '../../store/acoes'
 import { useDb } from '../../store/db'
+import { useRede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import type { Contato } from '../../types'
 
@@ -14,6 +15,7 @@ const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function Colegios() {
   const db = useDb()
+  const rede = useRede()
   const perfil = usePerfil()
   const navigate = useNavigate()
   const [criando, setCriando] = useState(false)
@@ -50,7 +52,7 @@ export default function Colegios() {
           <ul className="lista-links">
             {colegios.map((colegio) => {
               const turmas = turmasDoColegio(db, colegio.id)
-              const alunos = turmas.reduce((s, t) => s + alunosAtivos(db, t.id).length, 0)
+              const alunos = turmas.reduce((s, t) => s + (rede.cadastroDe(t.id)?.alunos ?? 0), 0)
               const responsavel = contatoDoColegio(db, colegio.id)
               const membroSolar = membroSolarDoColegio(db, colegio)
               return (

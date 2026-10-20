@@ -3,9 +3,8 @@ import { useState, type ChangeEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { SeletorHabilidade } from '../../components/SeletorHabilidade'
 import { Aviso, Cabecalho, Cartao, Confirmacao, Janela, Vazio } from '../../components/ui'
-import { buscarHabilidade } from '../../data/bncc'
 import { cadernosDaAvaliacao, descreverPeriodo, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
-import { dataCurta, dataLonga, plural, serieNome, tamanhoArquivo } from '../../lib/formato'
+import { dataCurta, dataLonga, plural, provaNome, serieNome, tamanhoArquivo } from '../../lib/formato'
 import {
   adicionarCaderno,
   aplicarGabarito,
@@ -24,8 +23,9 @@ import {
 } from '../../store/acoes'
 import { baixarPdfDoCaderno } from '../../store/arquivos'
 import { useDb } from '../../store/db'
+import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, type Caderno, type Db, type Letra, type Questao, type Serie } from '../../types'
+import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, type Caderno, type Disciplina, type Letra, type Questao, type Serie } from '../../types'
 import { FormularioAvaliacao, pendenciasDoCaderno } from './Avaliacoes'
 
 const LIMITE_PDF_MB = 50
@@ -34,6 +34,7 @@ export default function AvaliacaoDetalhe() {
   const { avaliacaoId = '' } = useParams()
   const [params, setParams] = useSearchParams()
   const db = useDb()
+  const rede = useRede()
   const perfil = usePerfil()
   const navigate = useNavigate()
   const [editando, setEditando] = useState(false)
@@ -44,8 +45,10 @@ export default function AvaliacaoDetalhe() {
 
   const cadernos = cadernosDaAvaliacao(db, avaliacao.id)
   const serie: Serie = SERIES.find((s) => String(s) === params.get('serie')) ?? cadernos[0]?.serie ?? 1
-  const caderno = cadernos.find((c) => c.serie === serie)
-  const comRespostas = db.lancamentos.some((l) => cadernos.some((c) => c.id === l.cadernoId) && Object.keys(l.respostas).length)
+  const disciplina: Disciplina = DISCIPLINAS_DA_PROVA.find((d) => d === params.get('disciplina')) ?? DISCIPLINAS_DA_PROVA[0]
+  const caderno = cadernos.find((c) => c.serie === serie && c.disciplina === disciplina)
+  // As turmas que já lançaram respostas, pelas somas da rede (a Solar não vê as respostas).
+  const comRespostas = cadernos.some((c) => turmasComRespostas(rede, c) > 0)
   const historico = db.historico.filter((e) => e.cadernoId && cadernos.some((c) => c.id === e.cadernoId)).slice(-10).reverse()
 
   return (
@@ -83,17 +86,17 @@ export default function AvaliacaoDetalhe() {
         />
       )}
 
-      <div className="abas-series" role="tablist" aria-label="Prova de cada ano">
+      <div className="abas-series" role="tablist" aria-label="Provas de cada ano">
         {SERIES.map((s) => {
-          const c = cadernos.find((x) => x.serie === s)
-          const pendencias = c ? pendenciasDoCaderno(c) : []
+          const doAno = cadernos.filter((x) => x.serie === s)
+          const pendencias = doAno.flatMap(pendenciasDoCaderno)
           return (
             <button
               key={s}
               role="tab"
               aria-selected={s === serie}
-              className={`aba-serie ${s === serie ? 'ativa' : ''} ${c ? '' : 'ausente'}`}
-              onClick={() => setParams({ serie: String(s) }, { replace: true })}
+              className={`aba-serie ${s === serie ? 'ativa' : ''} ${doAno.length ? '' : 'ausente'}`}
+              onClick={() => setParams({ serie: String(s), disciplina }, { replace: true })}
             >
               {serieNome(s)}
               {pendencias.length > 0 && <span className="ponto-pendente" aria-label={pendencias.join(', ')} />}
@@ -101,16 +104,34 @@ export default function AvaliacaoDetalhe() {
           )
         })}
       </div>
+      <div className="segmentos segmentos-grandes" role="tablist" aria-label="Disciplina">
+        {DISCIPLINAS_DA_PROVA.map((d) => {
+          const c = cadernos.find((x) => x.serie === serie && x.disciplina === d)
+          const pendencias = c ? pendenciasDoCaderno(c) : []
+          return (
+            <button
+              key={d}
+              role="tab"
+              aria-selected={d === disciplina}
+              className={`segmento ${d === disciplina ? 'ativo' : ''}`}
+              onClick={() => setParams({ serie: String(serie), disciplina: d }, { replace: true })}
+            >
+              {d}
+              {pendencias.length > 0 && <span className="ponto-pendente" aria-label={pendencias.join(', ')} />}
+            </button>
+          )
+        })}
+      </div>
 
       {caderno ? (
-        <EditorCaderno key={caderno.id} db={db} caderno={caderno} editavel={editarRede} />
+        <EditorCaderno key={caderno.id} rede={rede} caderno={caderno} editavel={editarRede} />
       ) : (
         <Vazio
-          titulo={`Esta avaliação não tem prova do ${serieNome(serie)}`}
+          titulo={`Esta avaliação não tem a prova de ${disciplina} do ${serieNome(serie)}`}
           acao={
             editarRede && (
-              <button className="btn btn-primario" onClick={() => adicionarCaderno(avaliacao.id, serie)}>
-                Criar a prova do {serieNome(serie)}
+              <button className="btn btn-primario" onClick={() => adicionarCaderno(avaliacao.id, serie, disciplina)}>
+                Criar a prova de {disciplina} do {serieNome(serie)}
               </button>
             )
           }
@@ -153,7 +174,7 @@ export default function AvaliacaoDetalhe() {
         aoFechar={() => setExcluindo(false)}
       >
         <p>
-          Saem do site as provas de todos os anos{comRespostas ? ' e todas as respostas já lançadas pelos professores. Os resultados desta avaliação deixam de existir' : ''}.
+          Saem do site as provas de Português e de Matemática de todos os anos{comRespostas ? ' e todas as respostas já lançadas pelos professores. Os resultados desta avaliação deixam de existir' : ''}.
           Não dá para desfazer.
         </p>
       </Confirmacao>
@@ -166,7 +187,10 @@ interface MudancaPendente {
   aplicar: (motivo: string) => void
 }
 
-function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; editavel: boolean }) {
+/** Quantas turmas já lançaram respostas da prova, pelas somas da rede. */
+const turmasComRespostas = (rede: Rede, caderno: Caderno) => rede.painel.turmas.filter((ag) => ag.caderno === caderno.id && ag.comResposta > 0).length
+
+function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Caderno; editavel: boolean }) {
   const [numQuestoes, setNumQuestoes] = useState(String(caderno.questoes.length))
   const [gabaritoTexto, setGabaritoTexto] = useState('')
   const [mensagem, setMensagem] = useState<{ texto: string; erro: boolean } | null>(null)
@@ -178,13 +202,12 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
   const [comentando, setComentando] = useState<number | null>(null)
   const letras: readonly string[] = LETRAS.slice(0, caderno.numAlternativas)
   const total = caderno.questoes.length
-  const turmasComRespostas = db.lancamentos.filter((l) => l.cadernoId === caderno.id && Object.keys(l.respostas).length > 0).length
-  const disciplinas = [...new Set(caderno.questoes.map((q) => q.disciplina))]
+  const comRespostas = turmasComRespostas(rede, caderno)
   const semGabarito = caderno.questoes.some((q) => !q.anulada && !q.gabarito)
 
   /** Depois que há respostas lançadas, mudar o gabarito pede um motivo, que vai para o histórico e para o aviso às turmas. */
   function mudarCorrecao(descricao: string, aplicar: (motivo?: string) => void) {
-    if (!turmasComRespostas) return aplicar()
+    if (!comRespostas) return aplicar()
     setMotivo('')
     setMudanca({ descricao, aplicar })
   }
@@ -193,7 +216,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
     const n = Number(numQuestoes)
     if (!Number.isInteger(n) || n < 1 || n > 60) return setMensagem({ erro: true, texto: 'Use um número de questões entre 1 e 60.' })
     if (n === total) return
-    if (n < total && turmasComRespostas > 0) return setReduzindo(n)
+    if (n < total && comRespostas > 0) return setReduzindo(n)
     definirNumeroDeQuestoes(caderno.id, n)
     setMensagem({ erro: false, texto: `A prova agora tem ${n} questões.` })
   }
@@ -219,7 +242,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
     setEnviando(true)
     try {
       await enviarPdf(caderno.id, arquivo)
-      setMensagem({ erro: false, texto: `PDF “${arquivo.name}” guardado. Os professores do ${serieNome(caderno.serie)} já podem baixar.` })
+      setMensagem({ erro: false, texto: `PDF “${arquivo.name}” guardado. A coordenação de cada colégio já pode baixar e imprimir.` })
     } catch {
       setMensagem({ erro: true, texto: 'Não foi possível guardar o PDF neste navegador. Tente de novo.' })
     } finally {
@@ -237,8 +260,8 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
 
   return (
     <Cartao
-      titulo={`Prova do ${serieNome(caderno.serie)}`}
-      sub={`${plural(total, 'questão', 'questões')} · ${disciplinas.join(', ')}`}
+      titulo={`Prova de ${provaNome(caderno)}`}
+      sub={plural(total, 'questão', 'questões')}
       acoes={
         <>
           {caderno.pdf && (
@@ -276,9 +299,9 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
         </Aviso>
       )}
 
-      {turmasComRespostas > 0 && (
+      {comRespostas > 0 && (
         <Aviso tom="info">
-          {plural(turmasComRespostas, 'turma já lançou', 'turmas já lançaram')} respostas desta prova. Mudanças no gabarito e anulações pedem um motivo,
+          {plural(comRespostas, 'turma já lançou', 'turmas já lançaram')} respostas desta prova. Mudanças no gabarito e anulações pedem um motivo,
           recalculam os resultados na hora e aparecem como aviso para as turmas.
         </Aviso>
       )}
@@ -382,8 +405,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
           <div className="editor-questoes-cabecalho" aria-hidden>
             <span>Nº</span>
             <span>Gabarito</span>
-            <span>Disciplina</span>
-            <span>Habilidade da BNCC</span>
+            <span>Habilidade da BNCC ({caderno.disciplina})</span>
             <span>Anular</span>
           </div>
           {caderno.questoes.map((q, i) => (
@@ -405,28 +427,12 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
                     </button>
                   ))}
                 </div>
-                <select
-                  value={q.disciplina}
-                  disabled={!editavel}
-                  aria-label={`Disciplina da questão ${i + 1}`}
-                  onChange={(e) => {
-                    const disciplina = e.target.value
-                    const manter = buscarHabilidade(q.habilidade)?.componente === disciplina
-                    editarQuestao(caderno.id, i, { disciplina, habilidade: manter ? q.habilidade : null })
-                  }}
-                >
-                  {DISCIPLINAS_DA_PROVA.map((d) => (
-                    <option key={d}>{d}</option>
-                  ))}
-                </select>
                 <fieldset className="fieldset-livre" disabled={!editavel}>
                   <SeletorHabilidade
                     serie={caderno.serie}
-                    disciplina={q.disciplina}
+                    disciplina={caderno.disciplina}
                     valor={q.habilidade}
-                    aoMudar={(h) =>
-                      editarQuestao(caderno.id, i, h ? { habilidade: h.codigo, disciplina: DISCIPLINAS_DA_PROVA.includes(h.componente) ? h.componente : q.disciplina } : { habilidade: null })
-                    }
+                    aoMudar={(h) => editarQuestao(caderno.id, i, { habilidade: h?.codigo ?? null })}
                   />
                 </fieldset>
                 <div className="editor-questao-fim">
@@ -482,7 +488,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
         }
       >
         <p>
-          {plural(turmasComRespostas, 'turma já lançou', 'turmas já lançaram')} respostas desta prova. Ao {mudanca?.descricao}, os resultados de todas elas
+          {plural(comRespostas, 'turma já lançou', 'turmas já lançaram')} respostas desta prova. Ao {mudanca?.descricao}, os resultados de todas elas
           serão recalculados, e os professores e as coordenações verão um aviso com o motivo.
         </p>
         <label className="campo">
@@ -520,7 +526,7 @@ function EditorCaderno({ db, caderno, editavel }: { db: Db; caderno: Caderno; ed
       >
         <p>
           A prova sai da avaliação
-          {turmasComRespostas ? `, junto com as respostas de ${plural(turmasComRespostas, 'turma', 'turmas')}` : ''}. Não dá para desfazer.
+          {comRespostas ? `, junto com as respostas de ${plural(comRespostas, 'turma', 'turmas')}` : ''}. Não dá para desfazer.
         </p>
       </Confirmacao>
     </Cartao>

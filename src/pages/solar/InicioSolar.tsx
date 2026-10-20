@@ -3,15 +3,13 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Barras, Cabecalho, Cartao, LembreteCooperacao, Progresso, Selo } from '../../components/ui'
 import {
-  alunosAtivos,
   avaliacaoAtual,
   avaliacoesOrdenadas,
-  cadernoDaSerie,
   cadernosDaAvaliacao,
+  cadernosDaSerie,
   contatoDoColegio,
   descreverPeriodo,
   etapaAvaliacao,
-  lancamentoDe,
   membroSolarDoColegio,
   nomesProfessores,
   permissoesDe,
@@ -19,13 +17,12 @@ import {
   pessoaDoPerfil,
   turmasDoColegio,
 } from '../../lib/consultas'
-import { analisarQuestoes, avaliados, coletarResultados, mediaPct, progressoDe } from '../../lib/estatisticas'
-import { compararTexto, dataCurta, descreverPrazo, plural, primeiroNome, serieNome, turmaNome } from '../../lib/formato'
-import { camposFaltando } from '../../lib/alunos'
-import { iniciaisRepetidas } from '../../lib/iniciais'
+import { compararTexto, dataCurta, descreverPrazo, plural, primeiroNome, provaNome, turmaNome } from '../../lib/formato'
+import { analisarQuestoesAg, avaliadosAg, mediaAg, progressoAg } from '../../lib/rede'
 import { useDb } from '../../store/db'
+import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { SERIES, type Avaliacao, type Db } from '../../types'
+import { DISCIPLINAS_DA_PROVA, type Avaliacao, type Db } from '../../types'
 
 interface Pendencia {
   chave: string
@@ -39,15 +36,16 @@ export default function InicioSolar() {
   const pessoa = perfil ? pessoaDoPerfil(db, perfil) : null
   const { editarRede } = permissoesDe(pessoa)
   const colegios = [...db.colegios].sort((a, b) => compararTexto(a.nome, b.nome))
+  const rede = useRede()
   const atual = avaliacaoAtual(db)
   const abertas = avaliacoesOrdenadas(db).filter((a) => etapaAvaliacao(a) !== 'encerrada')
-  const alertas = useMemo(() => alertasDeGabarito(db, atual), [db, atual])
+  const alertas = useMemo(() => alertasDeGabarito(db, rede, atual), [db, rede, atual])
 
   const pendencias: Pendencia[] = []
   for (const avaliacao of abertas) {
     for (const caderno of cadernosDaAvaliacao(db, avaliacao.id)) {
-      const para = `/solar/avaliacoes/${avaliacao.id}?serie=${caderno.serie}`
-      const prova = `prova do ${serieNome(caderno.serie)}`
+      const para = `/solar/avaliacoes/${avaliacao.id}?serie=${caderno.serie}&disciplina=${caderno.disciplina}`
+      const prova = `prova de ${provaNome(caderno)}`
       if (!caderno.pdf) pendencias.push({ chave: `pdf-${caderno.id}`, texto: <>Falta o PDF da <strong>{prova}</strong> ({avaliacao.titulo}).</>, acao: { rotulo: 'Enviar PDF', para } })
       const semGabarito = caderno.questoes.filter((q) => !q.anulada && !q.gabarito).length
       if (semGabarito) {
@@ -59,14 +57,19 @@ export default function InicioSolar() {
   }
   for (const alerta of alertas) {
     pendencias.push({
-      chave: `alerta-${alerta.serie}-${alerta.indice}`,
+      chave: `alerta-${alerta.caderno.id}-${alerta.indice}`,
       texto: (
         <>
-          <strong>Questão {alerta.indice + 1} da prova do {serieNome(alerta.serie)}</strong>: alerta de gabarito suspeito. Os alunos que vão bem no resto da prova
-          marcaram outra alternativa.
+          <strong>
+            Questão {alerta.indice + 1} da prova de {provaNome(alerta.caderno)}
+          </strong>
+          : alerta de gabarito suspeito. Os alunos que vão bem no resto da prova marcaram outra alternativa.
         </>
       ),
-      acao: { rotulo: 'Ver a questão', para: `/solar/resultados?avaliacao=${alerta.avaliacaoId}&serie=${alerta.serie}` },
+      acao: {
+        rotulo: 'Ver a questão',
+        para: `/solar/resultados?avaliacao=${alerta.caderno.avaliacaoId}&serie=${alerta.caderno.serie}&disciplina=${alerta.caderno.disciplina}`,
+      },
     })
   }
   for (const colegio of colegios) {
@@ -109,11 +112,11 @@ export default function InicioSolar() {
         {!editarRede && pendencias.length > 0 && <p className="texto-2 pequeno">Seu acesso é só de visualização: quem resolve é a equipe com permissão de edição.</p>}
       </Cartao>
 
-      {atual && <Andamento db={db} avaliacao={atual} quem={primeiroNome(pessoa?.nome ?? '')} />}
+      {atual && <Andamento db={db} rede={rede} avaliacao={atual} quem={primeiroNome(pessoa?.nome ?? '')} />}
 
-      <Prontidao db={db} />
+      <Prontidao db={db} rede={rede} />
 
-      {atual && <ResumoResultados db={db} avaliacao={atual} />}
+      {atual && <ResumoResultados db={db} rede={rede} avaliacao={atual} />}
 
       <div className="grade grade-kpis">
         <div className="kpi kpi-pequeno">
@@ -125,7 +128,7 @@ export default function InicioSolar() {
           <div className="kpi-rotulo">turmas em {db.config.anoLetivo}</div>
         </div>
         <div className="kpi kpi-pequeno">
-          <div className="kpi-valor">{db.alunos.filter((a) => a.ativo).length.toLocaleString('pt-BR')}</div>
+          <div className="kpi-valor">{rede.painel.cadastros.reduce((s, c) => s + c.alunos, 0).toLocaleString('pt-BR')}</div>
           <div className="kpi-rotulo">alunos</div>
         </div>
         <div className="kpi kpi-pequeno">
@@ -137,31 +140,28 @@ export default function InicioSolar() {
   )
 }
 
-/** Questões com alerta de gabarito suspeito na avaliação em andamento. */
-function alertasDeGabarito(db: Db, avaliacao: Avaliacao | null) {
+/** Questões com alerta de gabarito suspeito na avaliação em andamento, pelas somas de todas as turmas. */
+function alertasDeGabarito(db: Db, rede: Rede, avaliacao: Avaliacao | null) {
   if (!avaliacao) return []
-  return SERIES.flatMap((serie) => {
-    const caderno = cadernoDaSerie(db, avaliacao.id, serie)
-    if (!caderno) return []
-    const resultados = coletarResultados(db, { avaliacaoId: avaliacao.id, serie })
-    return analisarQuestoes(caderno, resultados)
+  return cadernosDaAvaliacao(db, avaliacao.id).flatMap((caderno) =>
+    analisarQuestoesAg(caderno, rede.painel.turmas)
       .filter((a) => a.alertas.includes('gabarito_suspeito'))
-      .map((a) => ({ avaliacaoId: avaliacao.id, serie, indice: a.indice }))
-  })
+      .map((a) => ({ caderno, indice: a.indice })),
+  )
 }
 
-function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem: string }) {
+function Andamento({ db, rede, avaliacao, quem }: { db: Db; rede: Rede; avaliacao: Avaliacao; quem: string }) {
   const [copiado, setCopiado] = useState<string | null>(null)
+  // Uma linha por turma e prova (cada turma lança Português e Matemática).
   const linhas = [...db.colegios]
     .sort((a, b) => compararTexto(a.nome, b.nome))
     .map((colegio) => {
-      const turmas = turmasDoColegio(db, colegio.id, avaliacao.anoLetivo).flatMap((turma) => {
-        const caderno = cadernoDaSerie(db, avaliacao.id, turma.serie)
-        if (!caderno) return []
-        const lancamento = lancamentoDe(db, caderno.id, turma.id)
-        const ultima = lancamento ? Object.values(lancamento.respostas).reduce((m, r) => (r.atualizadoEm > m ? r.atualizadoEm : m), '') : ''
-        return [{ turma, caderno, progresso: progressoDe(db, caderno, turma.id), ultima }]
-      })
+      const turmas = turmasDoColegio(db, colegio.id, avaliacao.anoLetivo).flatMap((turma) =>
+        cadernosDaSerie(db, avaliacao.id, turma.serie).map((caderno) => {
+          const ag = rede.agDe(caderno.id, turma.id)
+          return { turma, caderno, progresso: progressoAg(ag), ultima: ag?.ultima ?? '' }
+        }),
+      )
       return { colegio, turmas, contato: contatoDoColegio(db, colegio.id) }
     })
   const total = linhas.reduce((s, l) => s + l.turmas.length, 0)
@@ -169,9 +169,9 @@ function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem
 
   async function copiar(linha: (typeof linhas)[number]) {
     const faltam = linha.turmas.filter((t) => t.progresso.status !== 'concluido')
-    const texto = `Olá${linha.contato ? `, ${primeiroNome(linha.contato.nome)}` : ''}! Na ${avaliacao.titulo}, ${plural(faltam.length, 'turma do colégio ainda não concluiu', 'turmas do colégio ainda não concluíram')} o lançamento: ${faltam
-      .map((t) => `${turmaNome(t.turma)} (${t.progresso.status === 'nao_iniciado' ? 'não começou' : `${t.progresso.lancados} de ${t.progresso.total}`})`)
-      .join(', ')}. O prazo vai até ${dataCurta(avaliacao.prazoLancamento)}. Se precisarem de ajuda com o site, é só chamar. ${quem}, equipe Solar`
+    const texto = `Olá${linha.contato ? `, ${primeiroNome(linha.contato.nome)}` : ''}! Na ${avaliacao.titulo}, ${plural(faltam.length, 'lançamento do colégio ainda não foi concluído', 'lançamentos do colégio ainda não foram concluídos')}: ${faltam
+      .map((t) => `${turmaNome(t.turma)}, ${t.caderno.disciplina} (${t.progresso.status === 'nao_iniciado' ? 'não começou' : `${t.progresso.lancados} de ${t.progresso.total}`})`)
+      .join('; ')}. O prazo vai até ${dataCurta(avaliacao.prazoLancamento)}. Se precisarem de ajuda com o site, é só chamar. ${quem}, equipe Solar`
     try {
       await navigator.clipboard.writeText(texto)
       setCopiado(linha.colegio.id)
@@ -191,9 +191,9 @@ function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem
       }
     >
       <p className="resumo-andamento">
-        <strong>{concluidas}</strong> de {total} turmas concluíram o lançamento
+        <strong>{concluidas}</strong> de {total} lançamentos concluídos <span className="texto-2 pequeno">(cada turma lança Português e Matemática)</span>
       </p>
-      <Progresso valor={concluidas} total={total} rotulo="Turmas concluídas" />
+      <Progresso valor={concluidas} total={total} rotulo="Lançamentos concluídos" />
       <div className="andamento-colegios">
         {linhas.map((linha) => {
           const faltam = linha.turmas.filter((t) => t.progresso.status !== 'concluido')
@@ -212,10 +212,13 @@ function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem
               {faltam.length ? (
                 <>
                   <ul className="lista-simples">
-                    {faltam.map(({ turma, progresso, ultima }) => (
-                      <li key={turma.id}>
+                    {faltam.map(({ turma, caderno, progresso, ultima }) => (
+                      <li key={`${turma.id}-${caderno.id}`}>
                         <span>
-                          <strong>{turmaNome(turma)}</strong> · {nomesProfessores(db, turma)}
+                          <strong>
+                            {turmaNome(turma)} · {caderno.disciplina}
+                          </strong>{' '}
+                          · {nomesProfessores(db, turma)}
                         </span>
                         <span className="texto-2 pequeno">
                           {progresso.status === 'nao_iniciado' ? 'não começou' : `${progresso.lancados} de ${progresso.total} lançados`}
@@ -250,7 +253,7 @@ function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem
                   </div>
                 </>
               ) : (
-                <p className="texto-2 pequeno">Todas as turmas concluíram o lançamento.</p>
+                <p className="texto-2 pequeno">Todas as turmas concluíram o lançamento das duas provas.</p>
               )}
             </details>
           )
@@ -261,7 +264,7 @@ function Andamento({ db, avaliacao, quem }: { db: Db; avaliacao: Avaliacao; quem
 }
 
 /** Se cada colégio está pronto: responsável, professores nas turmas, alunos cadastrados e com os dados completos. */
-function Prontidao({ db }: { db: Db }) {
+function Prontidao({ db, rede }: { db: Db; rede: Rede }) {
   const colegios = [...db.colegios].sort((a, b) => compararTexto(a.nome, b.nome))
   return (
     <Cartao titulo="Como estão os cadastros dos colégios" sub="O que cada colégio já preparou no site. Clique no colégio para ver os detalhes.">
@@ -281,10 +284,11 @@ function Prontidao({ db }: { db: Db }) {
           <tbody>
             {colegios.map((colegio) => {
               const turmas = turmasDoColegio(db, colegio.id)
-              const alunos = turmas.flatMap((t) => alunosAtivos(db, t.id))
+              const cadastros = turmas.map((t) => rede.cadastroDe(t.id))
+              const alunos = cadastros.reduce((s, c) => s + (c?.alunos ?? 0), 0)
               const comProfessor = turmas.filter((t) => t.professorIds.length).length
-              const incompletos = alunos.filter((a) => camposFaltando(a).length).length
-              const repetidas = turmas.filter((t) => iniciaisRepetidas(alunosAtivos(db, t.id)).size > 0).length
+              const incompletos = cadastros.reduce((s, c) => s + (c?.incompletos ?? 0), 0)
+              const repetidas = cadastros.filter((c) => c?.repetidas).length
               const responsavel = contatoDoColegio(db, colegio.id)
               return (
                 <tr key={colegio.id}>
@@ -294,7 +298,7 @@ function Prontidao({ db }: { db: Db }) {
                   <td>{membroSolarDoColegio(db, colegio)?.nome ?? <Selo tom="ambar">Ninguém</Selo>}</td>
                   <td>{responsavel ? responsavel.nome : <Selo tom="ambar">Sem responsável</Selo>}</td>
                   <td className="num">{comProfessor === turmas.length ? `${comProfessor} de ${turmas.length}` : <Selo tom="ambar">{`${comProfessor} de ${turmas.length}`}</Selo>}</td>
-                  <td className="num">{alunos.length}</td>
+                  <td className="num">{alunos}</td>
                   <td className="num">{incompletos ? <Selo tom="ambar">{String(incompletos)}</Selo> : <span className="texto-2">0</span>}</td>
                   <td className="num">{repetidas ? `${plural(repetidas, 'turma', 'turmas')}` : <span className="texto-2">0</span>}</td>
                 </tr>
@@ -308,19 +312,23 @@ function Prontidao({ db }: { db: Db }) {
   )
 }
 
-function ResumoResultados({ db, avaliacao }: { db: Db; avaliacao: Avaliacao }) {
-  const resultados = useMemo(() => coletarResultados(db, { avaliacaoId: avaliacao.id }), [db, avaliacao.id])
-  if (!avaliados(resultados).length) return null
-  const porColegio = [...db.colegios]
-    .sort((a, b) => compararTexto(a.nome, b.nome))
-    .map((c) => {
-      const rs = resultados.filter((r) => r.colegio.id === c.id)
-      return { chave: c.id, rotulo: c.nome, valor: mediaPct(rs), detalhe: plural(avaliados(rs).length, 'aluno', 'alunos') }
+function ResumoResultados({ db, rede, avaliacao }: { db: Db; rede: Rede; avaliacao: Avaliacao }) {
+  const daAvaliacao = rede.painel.turmas.filter((ag) => rede.cadernoDe(ag.caderno)?.avaliacaoId === avaliacao.id)
+  if (!avaliadosAg(daAvaliacao)) return null
+  const colegios = [...db.colegios].sort((a, b) => compararTexto(a.nome, b.nome))
+  const porDisciplina = DISCIPLINAS_DA_PROVA.map((disciplina) => {
+    const ags = daAvaliacao.filter((ag) => rede.cadernoDe(ag.caderno)?.disciplina === disciplina)
+    const media = mediaAg(ags, rede.cadernoDe)
+    const colegio = colegios.map((c) => {
+      const doColegio = ags.filter((ag) => rede.colegioDaTurma(ag.turma) === c.id)
+      return { chave: c.id, rotulo: c.nome, valor: mediaAg(doColegio, rede.cadernoDe), detalhe: plural(avaliadosAg(doColegio), 'aluno', 'alunos') }
     })
+    return { disciplina, media, colegio }
+  })
   return (
     <Cartao
       titulo={`Resultados até agora · ${avaliacao.titulo}`}
-      sub={`Acerto médio da rede: ${mediaPct(resultados) == null ? '—' : `${Math.round(mediaPct(resultados)!)}%`}. Colégios em ordem alfabética.`}
+      sub={`Acerto médio da rede: ${porDisciplina.map((d) => `${d.disciplina} ${d.media == null ? '—' : `${Math.round(d.media)}%`}`).join(' · ')}. Colégios em ordem alfabética.`}
       acoes={
         <Link className="btn" to={`/solar/resultados?avaliacao=${avaliacao.id}`}>
           <ChartColumn size={16} aria-hidden /> Ver tudo
@@ -330,7 +338,14 @@ function ResumoResultados({ db, avaliacao }: { db: Db; avaliacao: Avaliacao }) {
       <LembreteCooperacao chave="solar-inicio">
         Use estas comparações para descobrir onde apoiar e quem pode compartilhar o que deu certo, não para classificar colégios ou professores.
       </LembreteCooperacao>
-      <Barras itens={porColegio} />
+      <div className="grade grade-2 sem-margem">
+        {porDisciplina.map((d) => (
+          <div key={d.disciplina}>
+            <h3 className="subtitulo">{d.disciplina}</h3>
+            <Barras itens={d.colegio} />
+          </div>
+        ))}
+      </div>
     </Cartao>
   )
 }

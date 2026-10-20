@@ -1,10 +1,11 @@
 import type { Draft } from 'immer'
-import { disciplinasDoCaderno, gerarDadosExemplo } from '../data/seed'
+import { gerarDadosExemplo, questoesDaProva } from '../data/seed'
 import { textoMudancaAluno, valorDoCampo, type CampoAluno } from '../lib/alunos'
 import { idLancamento, pessoaDoPerfil } from '../lib/consultas'
-import { agoraIso, hojeIso, primeiroNome, serieNome, turmaNome } from '../lib/formato'
+import { agoraIso, hojeIso, primeiroNome, provaNome, turmaNome } from '../lib/formato'
 import { formatarIniciais } from '../lib/iniciais'
 import {
+  DISCIPLINAS_DA_PROVA,
   LETRAS,
   VAZIO,
   type Aluno,
@@ -12,6 +13,7 @@ import {
   type Colegio,
   type Contato,
   type Db,
+  type Disciplina,
   type Evento,
   type Id,
   type Lancamento,
@@ -574,24 +576,26 @@ export function marcarCiente(ids: Id[]) {
 
 export type DadosAvaliacao = Pick<Db['avaliacoes'][number], 'titulo' | 'aplicacaoInicio' | 'aplicacaoFim' | 'prazoLancamento'>
 
-function cadernoEmBranco(avaliacaoId: Id, serie: Serie): Caderno {
+export function cadernoEmBranco(avaliacaoId: Id, serie: Serie, disciplina: Disciplina): Caderno {
   return {
     id: novoId('cad'),
     avaliacaoId,
     serie,
+    disciplina,
     numAlternativas: 4,
     usaFolhaRespostas: serie === 5,
-    questoes: disciplinasDoCaderno(serie).map((disciplina) => ({ gabarito: null, disciplina, habilidade: null, anulada: false })),
+    questoes: Array.from({ length: questoesDaProva(serie) }, () => ({ gabarito: null, disciplina, habilidade: null, anulada: false })),
     pdf: null,
     conferencia: null,
   }
 }
 
+/** Cria a avaliação com as provas de Português e de Matemática de cada ano escolhido. */
 export function criarAvaliacao(dados: DadosAvaliacao, series: Serie[]): Id {
   const id = novoId('av')
   atualizar((db) => {
     db.avaliacoes.push({ id, anoLetivo: Number(dados.aplicacaoInicio.slice(0, 4)), ...dados })
-    for (const serie of series) db.cadernos.push(cadernoEmBranco(id, serie))
+    for (const serie of series) for (const disciplina of DISCIPLINAS_DA_PROVA) db.cadernos.push(cadernoEmBranco(id, serie, disciplina))
     registrar(db, `Criou a ${dados.titulo}.`)
   })
   return id
@@ -616,8 +620,8 @@ export function removerAvaliacao(id: Id) {
   cadernos.forEach((c) => apagarPdf(c).catch(() => {}))
 }
 
-export function adicionarCaderno(avaliacaoId: Id, serie: Serie): Id {
-  const caderno = cadernoEmBranco(avaliacaoId, serie)
+export function adicionarCaderno(avaliacaoId: Id, serie: Serie, disciplina: Disciplina): Id {
+  const caderno = cadernoEmBranco(avaliacaoId, serie, disciplina)
   atualizar((db) => {
     db.cadernos.push(caderno)
   })
@@ -659,9 +663,8 @@ export function definirFolhaRespostas(id: Id, usa: boolean) {
 
 export function definirNumeroDeQuestoes(id: Id, total: number) {
   comCaderno(id, (caderno) => {
-    const ultima = caderno.questoes.at(-1)
     while (caderno.questoes.length < total) {
-      caderno.questoes.push({ gabarito: null, disciplina: ultima?.disciplina ?? 'Português', habilidade: null, anulada: false })
+      caderno.questoes.push({ gabarito: null, disciplina: caderno.disciplina, habilidade: null, anulada: false })
     }
     caderno.questoes.splice(total)
     caderno.conferencia = null
@@ -669,7 +672,7 @@ export function definirNumeroDeQuestoes(id: Id, total: number) {
 }
 
 const nomeDaProva = (caderno: Draft<Caderno>, db: Draft<Db>) =>
-  `prova do ${serieNome(caderno.serie)} (${db.avaliacoes.find((a) => a.id === caderno.avaliacaoId)?.titulo ?? 'avaliação'})`
+  `prova de ${provaNome(caderno)} (${db.avaliacoes.find((a) => a.id === caderno.avaliacaoId)?.titulo ?? 'avaliação'})`
 
 /**
  * Muda uma questão. Gabarito e anulação desfazem a conferência do gabarito; se já houver respostas
@@ -787,7 +790,8 @@ export function definirSituacao(cadernoId: Id, turmaId: Id, alunoId: Id, situaca
 export function concluirLancamento(cadernoId: Id, turmaId: Id) {
   atualizar((db) => {
     lancamentoPara(db, cadernoId, turmaId).concluidoEm = agoraIso()
-    registrar(db, `Concluiu o lançamento das respostas do ${descreverTurma(db, turmaId)}.`, { colegioId: colegioDaTurma(db, turmaId), turmaId })
+    const disciplina = db.cadernos.find((c) => c.id === cadernoId)?.disciplina
+    registrar(db, `Concluiu o lançamento da prova de ${disciplina ?? 'avaliação'} do ${descreverTurma(db, turmaId)}.`, { colegioId: colegioDaTurma(db, turmaId), turmaId })
   })
 }
 

@@ -2059,7 +2059,7 @@ abbr[title] {
 .editor-questoes-cabecalho,
 .editor-questao {
   display: grid;
-  grid-template-columns: 34px 170px 170px minmax(0, 1fr) 100px;
+  grid-template-columns: 34px 170px minmax(0, 1fr) 100px;
   gap: 12px;
   align-items: center;
 }
@@ -2727,6 +2727,41 @@ html.letra-maior .janela {
 }
 .segmentos-grandes {
   margin-bottom: 20px;
+}
+/* O andamento das duas provas de uma turma, lado a lado */
+.selos-provas {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* As provas de um ano (Português e Matemática), na aba Provas da coordenação */
+.provas-do-ano {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.provas-do-ano li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.provas-do-ano li:last-child {
+  border-bottom: 0;
+}
+
+/* Português ou Matemática, nas páginas de lançamento e de resultados da turma */
+.disciplinas-turma {
+  margin-top: -8px;
+}
+.disciplinas-turma .segmento {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 .segmentos-grandes .segmento {
   min-height: 44px;
@@ -3833,13 +3868,6 @@ html.letra-maior .janela {
   font-size: 12px;
   color: var(--texto-2);
   font-variant-numeric: tabular-nums;
-}
-.colunas-questoes-numeros .matematica {
-  color: var(--text-heading);
-  font-weight: 700;
-}
-.colunas-questoes-disciplinas {
-  margin: 8px 0 0;
 }
 
 .legenda-faixas {

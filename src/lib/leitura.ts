@@ -39,11 +39,15 @@ export function quadroColegioQuestao(caderno: Caderno, resultados: ResultadoAlun
   return caderno.questoes.map((questao, indice) => {
     const rede = questaoValida(questao) ? acertoNaQuestao(lista, indice).pct : null
     const mapa = new Map(colegios.map((c) => [c.id, questaoValida(questao) ? acertoNaQuestao(porColegio.get(c.id) ?? [], indice) : { pct: null, n: 0 }]))
-    const comAlunos = [...mapa.values()].filter((v) => v.n >= minimo && v.pct != null)
-    const abaixo = comAlunos.filter((v) => v.pct! < LIMITE_METADE).length
-    let leitura: LeituraQuadro = null
-    if (comAlunos.length > 1 && abaixo === comAlunos.length) leitura = 'todos'
-    else if (abaixo > 0 && abaixo <= 2) leitura = 'alguns'
-    return { indice, questao, rede, porColegio: mapa, leitura }
+    return { indice, questao, rede, porColegio: mapa, leitura: leituraDaLinha([...mapa.values()], minimo) }
   })
+}
+
+/** A leitura de uma linha do quadro, a partir do acerto de cada colégio na questão. */
+export function leituraDaLinha(valores: { pct: number | null; n: number }[], minimo = MINIMO_QUADRO): LeituraQuadro {
+  const comAlunos = valores.filter((v) => v.n >= minimo && v.pct != null)
+  const abaixo = comAlunos.filter((v) => v.pct! < LIMITE_METADE).length
+  if (comAlunos.length > 1 && abaixo === comAlunos.length) return 'todos'
+  if (abaixo > 0 && abaixo <= 2) return 'alguns'
+  return null
 }

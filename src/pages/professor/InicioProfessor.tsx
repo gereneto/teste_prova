@@ -12,11 +12,11 @@ import {
   turmasAnterioresDoProfessor,
   turmasDoProfessor,
 } from '../../lib/consultas'
-import { marcaEm, progressoDaTurma, respostaCompleta } from '../../lib/estatisticas'
-import { dataCurta, dataLonga, descreverPrazo, diasAte, plural, primeiroNome, serieNome, turmaNome } from '../../lib/formato'
+import { marcaEm, progressoDaTurma, respostaCompleta, type Progresso } from '../../lib/estatisticas'
+import { dataCurta, dataLonga, descreverPrazo, diasAte, listaEmTexto, plural, primeiroNome, serieNome, turmaNome } from '../../lib/formato'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import { VAZIO, type Db, type Turma } from '../../types'
+import { VAZIO, type Caderno, type Db, type Turma } from '../../types'
 
 export default function InicioProfessor() {
   const db = useDb()
@@ -56,7 +56,7 @@ export default function InicioProfessor() {
                     {prova && <span className="texto-2 bloco pequeno">{prova.avaliacao.titulo}</span>}
                   </span>
                   {prova && (
-                    <Link className="btn btn-pequeno" to={`/professor/resultados/${prova.caderno.id}/${turma.id}`}>
+                    <Link className="btn btn-pequeno" to={`/professor/resultados/${prova.cadernos[0].id}/${turma.id}`}>
                       <ChartColumn size={15} aria-hidden /> Ver resultados
                     </Link>
                   )}
@@ -72,6 +72,7 @@ export default function InicioProfessor() {
 
 function CartaoTurma({ db, turma }: { db: Db; turma: Turma }) {
   const prova = avaliacaoDaTurma(db, turma)
+  const atual = prova && (situacoesDaTurma(db, turma, prova.cadernos).find((s) => s.progresso.status !== 'concluido')?.caderno ?? prova.cadernos[0])
   const alunos = alunosAtivos(db, turma.id)
   const faltando = descreverFaltando(alunos)
   const base = '/professor'
@@ -84,12 +85,12 @@ function CartaoTurma({ db, turma }: { db: Db; turma: Turma }) {
         </Aviso>
       )}
       <div className="atalhos-turma">
-        {prova && (
+        {prova && atual && (
           <>
-            <Link to={`${base}/lancar/${prova.caderno.id}/${turma.id}`}>
+            <Link to={`${base}/lancar/${atual.id}/${turma.id}`}>
               <ClipboardList size={18} aria-hidden /> Lançar respostas
             </Link>
-            <Link to={`${base}/resultados/${prova.caderno.id}/${turma.id}`}>
+            <Link to={`${base}/resultados/${prova.cadernos[0].id}/${turma.id}`}>
               <ChartColumn size={18} aria-hidden /> Resultados
             </Link>
           </>
@@ -102,22 +103,36 @@ function CartaoTurma({ db, turma }: { db: Db; turma: Turma }) {
   )
 }
 
-/** O próximo passo da turma em uma frase e um botão. */
+/** Como está o lançamento de cada prova (Português e Matemática) da turma. */
+function situacoesDaTurma(db: Db, turma: Turma, cadernos: Caderno[]) {
+  return cadernos.map((caderno) => {
+    const lancamento = lancamentoDe(db, caderno.id, turma.id)
+    const alunos = alunosDaTurma(db, turma.id, lancamento)
+    return { caderno, lancamento, alunos, progresso: progressoDaTurma(caderno, alunos, lancamento) }
+  })
+}
+
+const situacaoEmTexto = (p: Progresso) =>
+  p.status === 'concluido' ? 'concluído' : p.status === 'nao_iniciado' ? 'não começou' : `${p.lancados} de ${p.total} lançados`
+
+/** O próximo passo da turma em uma frase e um botão: a primeira prova (Português, depois Matemática) ainda não concluída. */
 function ProximoPasso({ db, turma }: { db: Db; turma: Turma }) {
   const prova = avaliacaoDaTurma(db, turma)
   if (!prova) {
     return (
       <div className="proximo-passo">
-        <p className="proximo-passo-frase">Ainda não há prova do {serieNome(turma.serie)} na avaliação deste ano.</p>
+        <p className="proximo-passo-frase">Ainda não há as provas do {serieNome(turma.serie)} na avaliação deste ano.</p>
       </div>
     )
   }
-  const { avaliacao, caderno } = prova
+  const { avaliacao } = prova
+  const situacoes = situacoesDaTurma(db, turma, prova.cadernos)
+  const pendente = situacoes.find((s) => s.progresso.status !== 'concluido')
+  const { caderno, lancamento, alunos, progresso } = pendente ?? situacoes[0]
+  const prontas = situacoes.filter((s) => s.progresso.status === 'concluido').map((s) => s.caderno.disciplina)
+  const jaPronta = prontas.length && pendente ? `${listaEmTexto(prontas)} ${prontas.length > 1 ? 'prontas' : 'pronto'}. ` : ''
   const base = '/professor'
   const lancar = `${base}/lancar/${caderno.id}/${turma.id}`
-  const lancamento = lancamentoDe(db, caderno.id, turma.id)
-  const alunos = alunosDaTurma(db, turma.id, lancamento)
-  const progresso = progressoDaTurma(caderno, alunos, lancamento)
   const etapa = etapaAvaliacao(avaliacao)
   const datas = `${avaliacao.titulo}: aplicação de ${dataCurta(avaliacao.aplicacaoInicio)} a ${dataCurta(avaliacao.aplicacaoFim)}, lançamento até ${dataCurta(avaliacao.prazoLancamento)}`
   const dias = diasAte(avaliacao.prazoLancamento)
@@ -131,22 +146,22 @@ function ProximoPasso({ db, turma }: { db: Db; turma: Turma }) {
     frase = `A prova será aplicada de ${dataCurta(avaliacao.aplicacaoInicio)} a ${dataCurta(avaliacao.aplicacaoFim)}. Antes disso, confira a lista de alunos da turma.`
     detalhe = 'A coordenação imprime as provas.'
     botao = { rotulo: 'Conferir a lista de alunos', para: `${base}/turma/${turma.id}/alunos` }
-  } else if (progresso.status === 'concluido') {
-    frase = 'Pronto! Veja como foi a turma.'
+  } else if (!pendente) {
+    frase = situacoes.length > 1 ? 'Pronto! As duas provas foram lançadas. Veja como foi a turma.' : 'Pronto! Veja como foi a turma.'
     detalhe = lancamento?.concluidoEm ? `Lançamento concluído em ${dataLonga(lancamento.concluidoEm)}.` : null
     botao = { rotulo: 'Ver resultados', para: `${base}/resultados/${caderno.id}/${turma.id}` }
   } else if (alunos.length > 0 && progresso.lancados === alunos.length) {
-    frase = `Todos os ${alunos.length} alunos foram lançados. Confira e conclua o lançamento.`
+    frase = `${jaPronta}Todos os ${alunos.length} alunos foram lançados em ${caderno.disciplina}. Confira e conclua o lançamento.`
     detalhe = descreverPrazo(avaliacao.prazoLancamento)
-    botao = { rotulo: 'Concluir lançamento', para: lancar }
-  } else if (etapa === 'aplicacao' && progresso.status === 'nao_iniciado') {
-    frase = `Semana da prova: de ${dataCurta(avaliacao.aplicacaoInicio)} a ${dataCurta(avaliacao.aplicacaoFim)}. Depois de aplicar, lance as respostas.`
+    botao = { rotulo: `Concluir ${caderno.disciplina}`, para: lancar }
+  } else if (etapa === 'aplicacao' && situacoes.every((s) => s.progresso.status === 'nao_iniciado')) {
+    frase = `Semana da prova: de ${dataCurta(avaliacao.aplicacaoInicio)} a ${dataCurta(avaliacao.aplicacaoFim)}. Depois de aplicar, lance as respostas de cada prova.`
     detalhe = descreverPrazo(avaliacao.prazoLancamento)
-    botao = { rotulo: 'Lançar respostas', para: lancar }
+    botao = { rotulo: `Lançar ${caderno.disciplina}`, para: lancar }
   } else if (progresso.status === 'nao_iniciado') {
-    frase = `Lance as respostas do ${turmaNome(turma)}. ${descreverPrazo(avaliacao.prazoLancamento)}.`
+    frase = `${jaPronta}Lance as respostas de ${caderno.disciplina} do ${turmaNome(turma)}. ${descreverPrazo(avaliacao.prazoLancamento)}.`
     detalhe = `0 de ${plural(alunos.length, 'aluno lançado', 'alunos lançados')}.`
-    botao = { rotulo: 'Começar', para: lancar }
+    botao = { rotulo: `Começar ${caderno.disciplina}`, para: lancar }
     urgente = dias >= 0 && dias <= 3
   } else {
     const parado = alunos.find((a) => !respostaCompleta(caderno, lancamento?.respostas[a.id]))
@@ -154,19 +169,21 @@ function ProximoPasso({ db, turma }: { db: Db; turma: Turma }) {
     const questao = marcas ? caderno.questoes.findIndex((q, i) => !q.anulada && marcaEm(marcas, i) === VAZIO) : -1
     frase = parado
       ? marcas && questao >= 0
-        ? `Você parou no aluno nº ${parado.numero}, na questão ${questao + 1}.`
-        : `O próximo é o aluno nº ${parado.numero}.`
-      : 'Continue o lançamento.'
+        ? `Em ${caderno.disciplina}, você parou no aluno nº ${parado.numero}, na questão ${questao + 1}.`
+        : `Em ${caderno.disciplina}, o próximo é o aluno nº ${parado.numero}.`
+      : `Continue o lançamento de ${caderno.disciplina}.`
     detalhe = `${progresso.lancados} de ${plural(alunos.length, 'aluno lançado', 'alunos lançados')}. ${descreverPrazo(avaliacao.prazoLancamento)}.`
     botao = { rotulo: 'Continuar de onde parei', para: lancar }
     urgente = dias >= 0 && dias <= 3
   }
+  const resumo = situacoes.length > 1 ? situacoes.map((s) => `${s.caderno.disciplina}: ${situacaoEmTexto(s.progresso)}`).join(' · ') : null
 
   return (
     <div className={`proximo-passo ${urgente ? 'urgente' : ''}`}>
       <p className="sobretitulo">O que fazer agora</p>
       <p className="proximo-passo-frase">{frase}</p>
       {detalhe && <p className="proximo-passo-detalhe">{detalhe}</p>}
+      {resumo && etapa !== 'agendada' && <p className="proximo-passo-detalhe">{resumo}</p>}
       {botao && (
         <Link className="btn btn-primario btn-grande" to={botao.para}>
           {botao.rotulo} <ArrowRight size={18} aria-hidden />

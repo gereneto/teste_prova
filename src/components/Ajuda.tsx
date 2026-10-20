@@ -32,7 +32,7 @@ export const PASSOS: Record<Papel, { titulo: string; texto: string }[]> = {
     { titulo: 'Acompanhe os resultados', texto: 'No Início, acompanhe o lançamento. Em “Resultados”, veja os gráficos do colégio e de cada turma.' },
   ],
   solar: [
-    { titulo: 'Prepare as provas', texto: 'Em “Avaliações”, envie o PDF de cada ano e preencha o gabarito, a disciplina e a habilidade de cada questão.' },
+    { titulo: 'Prepare as provas', texto: 'Em “Avaliações”, cada ano tem uma prova de Português e outra de Matemática: envie o PDF de cada uma e preencha o gabarito e a habilidade de cada questão.' },
     { titulo: 'Confira os gabaritos', texto: 'Uma segunda pessoa confere o gabarito com a prova impressa e marca “Gabarito conferido”.' },
     {
       titulo: 'Cuide dos seus colégios',
@@ -45,7 +45,7 @@ export const PASSOS: Record<Papel, { titulo: string; texto: string }[]> = {
 
 export const PALAVRAS: { termo: string; definicao: string }[] = [
   { termo: 'Avaliação', definicao: 'A aplicação anual da Prova Solar, com uma prova para cada ano, de Português e Matemática.' },
-  { termo: 'Prova', definicao: 'O papel que os alunos de um ano recebem, como a prova do 3º ano.' },
+  { termo: 'Prova', definicao: 'O papel que os alunos de um ano recebem. Cada ano faz duas provas, uma de Português e outra de Matemática, como a prova de Matemática do 3º ano.' },
   { termo: 'Folha de respostas', definicao: 'Só no 5º ano: os alunos marcam as respostas numa folha à parte. Do 1º ao 4º ano, marcam na própria prova.' },
   { termo: 'Lançar respostas', definicao: 'Passar para o site a letra que cada aluno marcou. O site corrige sozinho.' },
   { termo: 'Em branco', definicao: 'O aluno não marcou nenhuma alternativa na questão.' },

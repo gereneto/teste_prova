@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router'
 import logoSolar from '../../assets/marca/logo-solar.png'
 import { Vazio } from '../../components/ui'
 import { alunosAtivos } from '../../lib/consultas'
-import { serieNome, turmaNome } from '../../lib/formato'
+import { provaNome, turmaNome } from '../../lib/formato'
 import { LETRAS, type Aluno, type Avaliacao, type Caderno, type Colegio, type Turma } from '../../types'
 import { useContextoTurma } from '../turma/contexto'
 
@@ -121,7 +121,7 @@ function Folha({ aluno, caderno, avaliacao, turma, colegio }: { aluno: Aluno | n
       <footer className="folha-rodape">
         <span>Não dobre nem amasse esta folha.</span>
         <span>
-          {avaliacao.titulo} · prova do {serieNome(caderno.serie)}
+          {avaliacao.titulo} · prova de {provaNome(caderno)}
         </span>
       </footer>
     </section>

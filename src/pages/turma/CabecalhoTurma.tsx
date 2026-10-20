@@ -2,7 +2,7 @@ import { ChartColumn, ClipboardList, Users, type LucideIcon } from 'lucide-react
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router'
 import { Cabecalho } from '../../components/ui'
-import { alunosAtivos, anoLetivoAtual, avaliacaoDaTurma, nomesProfessores } from '../../lib/consultas'
+import { alunosAtivos, anoLetivoAtual, avaliacaoDaTurma, cadernosDaSerie, nomesProfessores } from '../../lib/consultas'
 import { plural, turmaNome } from '../../lib/formato'
 import type { Caderno, Colegio, Db, Perfil, Turma } from '../../types'
 
@@ -11,6 +11,7 @@ export type AbaTurma = 'lancar' | 'resultados' | 'alunos'
 /**
  * Cabeçalho de todas as páginas de uma turma, com as mesmas abas para professor e coordenação:
  * Lançar respostas, Resultados e Alunos. A Solar vê só os resultados. Imprimir as provas é só na aba Provas da coordenação.
+ * Em Lançar e Resultados, a turma escolhe a prova: Português ou Matemática (uma prova por disciplina).
  */
 export function CabecalhoTurma(props: {
   db: Db
@@ -24,15 +25,19 @@ export function CabecalhoTurma(props: {
 }) {
   const { db, perfil, turma, colegio, base, aba } = props
   const prova = props.caderno
-    ? { caderno: props.caderno, avaliacao: db.avaliacoes.find((a) => a.id === props.caderno!.avaliacaoId)! }
+    ? {
+        avaliacao: db.avaliacoes.find((a) => a.id === props.caderno!.avaliacaoId)!,
+        cadernos: cadernosDaSerie(db, props.caderno.avaliacaoId, turma.serie),
+      }
     : avaliacaoDaTurma(db, turma)
+  const atual = props.caderno ?? prova?.cadernos[0]
   const anterior = turma.anoLetivo < anoLetivoAtual(db)
   const comAbas = perfil.papel !== 'solar' && !anterior
   const alunos = alunosAtivos(db, turma.id).length
 
   const abas: { id: AbaTurma; rotulo: string; para: string; Icone: LucideIcon }[] = []
-  if (prova) abas.push({ id: 'lancar', rotulo: 'Lançar respostas', para: `${base}/lancar/${prova.caderno.id}/${turma.id}`, Icone: ClipboardList })
-  if (prova) abas.push({ id: 'resultados', rotulo: 'Resultados', para: `${base}/resultados/${prova.caderno.id}/${turma.id}`, Icone: ChartColumn })
+  if (atual) abas.push({ id: 'lancar', rotulo: 'Lançar respostas', para: `${base}/lancar/${atual.id}/${turma.id}`, Icone: ClipboardList })
+  if (atual) abas.push({ id: 'resultados', rotulo: 'Resultados', para: `${base}/resultados/${atual.id}/${turma.id}`, Icone: ChartColumn })
   abas.push({ id: 'alunos', rotulo: 'Alunos', para: `${base}/turma/${turma.id}/alunos`, Icone: Users })
 
   const detalhes = [
@@ -41,6 +46,7 @@ export function CabecalhoTurma(props: {
     perfil.papel === 'professor' ? null : nomesProfessores(db, turma),
     anterior ? null : plural(alunos, 'aluno', 'alunos'),
   ].filter(Boolean)
+  const disciplinas = props.caderno && prova && prova.cadernos.length > 1 && aba !== 'alunos' ? prova.cadernos : []
 
   return (
     <>
@@ -56,6 +62,20 @@ export function CabecalhoTurma(props: {
           {abas.map(({ id, rotulo, para, Icone }) => (
             <NavLink key={id} to={para} className={`aba-turma ${aba === id ? 'ativa' : ''}`} aria-current={aba === id ? 'page' : undefined}>
               <Icone size={18} aria-hidden /> {rotulo}
+            </NavLink>
+          ))}
+        </nav>
+      )}
+      {disciplinas.length > 0 && (
+        <nav className="segmentos segmentos-grandes disciplinas-turma" aria-label="Prova">
+          {disciplinas.map((c) => (
+            <NavLink
+              key={c.id}
+              to={`${base}/${aba === 'lancar' ? 'lancar' : 'resultados'}/${c.id}/${turma.id}`}
+              className={`segmento ${c.id === props.caderno?.id ? 'ativo' : ''}`}
+              aria-current={c.id === props.caderno?.id ? 'page' : undefined}
+            >
+              {c.disciplina}
             </NavLink>
           ))}
         </nav>
