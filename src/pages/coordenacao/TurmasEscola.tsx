@@ -45,7 +45,7 @@ export default function TurmasEscola() {
         />
       )}
 
-      {!turmas.length && <Vazio titulo="Cadastre a primeira turma">Depois é só colar a lista de alunos de cada turma.</Vazio>}
+      {!turmas.length && <Vazio titulo="Cadastre a primeira turma">Depois, cadastre os alunos de cada turma, um por linha.</Vazio>}
 
       {SERIES.map((serie) => {
         const doAno = turmas.filter((t) => t.serie === serie)

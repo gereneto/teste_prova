@@ -140,12 +140,30 @@ O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio pa
 | `src/lib/alunos.ts` | Ordem da chamada, dados faltando e o texto de cada mudança na lista de alunos |
 | `src/lib/consultas.ts` | Consultas aos dados, pessoas e permissões de cada perfil |
 | `src/lib/iniciais.ts` | Formato das iniciais (maiúsculas com ponto) e conferência de iniciais repetidas |
-| `src/store` | Onde os dados são guardados e o que cada tela pode alterar. Hoje é o navegador; para ter servidor e login, basta trocar `db.ts` e `acoes.ts` |
+| `src/store` | Onde os dados ficam e o que cada tela pode alterar: na demonstração, no navegador; na plataforma, as mesmas ações também vão ao banco, pela ponte de `src/plataforma` |
+| `src/plataforma` | Só na versão da plataforma (abaixo): sessão, carga do banco, funções do banco, fila do lançamento, entrada |
 | `src/data/seed.ts` | Gerador dos dados fictícios e das pessoas fixas da versão de teste |
 | `src/data/bncc-ef1.json` | 574 habilidades da BNCC do 1º ao 5º ano |
 | `src/assets/marca` | Logos e arte da marca, copiados do design system da Solar |
 | `src/styles.css` | Estilos, com os tokens do design system no início |
 | `scripts/` | Conversão da planilha da BNCC e geração dos PDFs de exemplo |
+
+### A versão da plataforma (`npm run build:plataforma`)
+
+O mesmo código compila com o banco de verdade (Supabase, schema `prova` do repositório `plataforma-infra`) quando o modo do Vite é `plataforma` (`src/plataforma/modo.ts`, constante `PLATAFORMA`). As telas não mudam: `store/db.ts` e `store/acoes.ts` mudam os dados na hora e, na plataforma, mandam cada mudança ao banco pela ponte (`plataforma/ponte.ts`), uma função de cada vez e na ordem; depois, a carga do banco (`prova.carregar`) substitui tudo. Erro do banco aparece num aviso no canto da tela. A demonstração não leva o `supabase-js` no pacote (o `main.tsx` só importa a plataforma quando o modo é `plataforma`).
+
+| Arquivo | O que faz |
+|---|---|
+| `plataforma/sessao.ts` | A sessão comum da Plataforma Solar, cópia em TypeScript do `solar-sessao.js` do hub (contrato v1, mesmos casos de teste em `sessao.test.ts`). O ambiente sai do endereço: `plataformasolar.org.br` usa a produção; `*.site-institucional-c24.workers.dev`, o banco de teste; `localhost`, o Supabase local |
+| `plataforma/Portao.tsx` | Confere a sessão e carrega os dados antes das telas. Sem sessão: na produção, vai para `/entrar/?voltar=/prova/` do hub; no teste, mostra `EntrarTeste.tsx` (e-mail e código, porque o preview de uma branch não tem o hub) |
+| `plataforma/EntradaPlataforma.tsx` | Quem tem mais de um papel escolhe com qual entrar; com um só, entra direto |
+| `plataforma/servidor.ts` | As funções do banco (RPC), os convites (pela função `acesso`), os PDFs (bucket `provas`, baixados por URL assinada) e a carga |
+| `plataforma/carga.ts` | Converte o que o banco devolve para o formato das telas (`Db`) |
+| `plataforma/fila.ts` | O lançamento: cada aluno fica no IndexedDB (`prova:fila`) até o banco confirmar; sem internet, a tela avisa e envia quando a internet volta |
+
+Tudo o que a plataforma guarda no navegador leva o prefixo `prova:` (`chave()` em `modo.ts`); a demonstração continua com `prova-solar:`. A entrada por perfil, os links de acesso e “E-mails enviados” existem só na demonstração. A Solar recebe os números da rede já somados por turma (`prova.painel_rede`), nunca aluno a aluno.
+
+Para experimentar a plataforma no ambiente de teste: cada branch vira um preview em `https://<branch>-prova-solar.site-institucional-c24.workers.dev/prova/`, com o banco de teste. Pessoas de teste usam e-mails terminados em `.test` e entram com o código do workflow **Código de teste** do `plataforma-infra`. O workflow **Ensaio da Prova** do mesmo repositório percorre as telas sozinho num navegador (Solar, coordenação e professora: cadastros, lançamento com um aluno sem internet e resultados) e guarda as telas de cada passo.
 
 A lista de habilidades vem da planilha `BNCC - Habilidades.xlsx` da Solar:
 

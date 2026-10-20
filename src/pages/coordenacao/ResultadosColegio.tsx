@@ -33,8 +33,8 @@ export default function ResultadosColegio() {
   const db = useDb()
   const perfil = usePerfil()
   const [params, setParams] = useSearchParams()
-  const [serieQuestoes, setSerieQuestoes] = useState<Serie>(1)
-  const [serieTurmas, setSerieTurmas] = useState<Serie>(1)
+  const [serieQuestoesEscolhida, setSerieQuestoes] = useState<Serie>(1)
+  const [serieTurmasEscolhida, setSerieTurmas] = useState<Serie>(1)
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   const avaliacoes = avaliacoesOrdenadas(db)
   const avaliacao = db.avaliacoes.find((a) => a.id === params.get('avaliacao')) ?? avaliacaoAtual(db) ?? avaliacoes[0]
@@ -61,6 +61,10 @@ export default function ResultadosColegio() {
   const porDisciplina = DISCIPLINAS_DA_PROVA.map((d) => desempenhoPor(todos, (q) => q.disciplina).find((x) => x.chave === d)).filter(Boolean)
   const porAno = SERIES.map((serie) => ({ serie, resultados: resultados.filter((r) => r.turma.serie === serie) })).filter((x) => avaliados(x.resultados).length)
   const seriesComTurma = SERIES.filter((s) => turmas.some((t) => t.serie === s))
+  // O ano escolhido tem de ser um que o colégio tem (um colégio pode não ter o 1º ano).
+  const noColegio = (s: Serie): Serie => (seriesComTurma.includes(s) ? s : (seriesComTurma[0] ?? s))
+  const serieQuestoes = noColegio(serieQuestoesEscolhida)
+  const serieTurmas = noColegio(serieTurmasEscolhida)
   const caderno = cadernoDe(db, avaliacao.id, serieQuestoes, disciplina)
   const doAno = resultados.filter((r) => r.turma.serie === serieQuestoes)
 
