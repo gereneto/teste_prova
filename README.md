@@ -30,7 +30,7 @@ Um roteiro para ver tudo em poucos minutos:
    - Em “Professores”, cadastre um professor: o site manda para o e-mail dele um link de acesso. Corrija o e-mail e um link novo é enviado; o antigo para de valer.
    - Em “Resultados”, veja os gráficos do colégio. As turmas ficam em “Ver por turma”, com o lembrete de cooperação.
 3. **Equipe Solar.** O Início aponta o gabarito do 4º ano ainda não conferido, o alerta de gabarito suspeito na questão 12 e um colégio sem responsável.
-   - Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa (ou a responsável pela equipe Solar) define quem responde pela coordenação, que recebe o link de acesso por e-mail.
+   - Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa (ou a responsável pela equipe Solar) define quem responde pela coordenação: torna responsável qualquer pessoa da coordenação do colégio, ou cadastra uma nova, que recebe o link de acesso por e-mail. A coordenação não passa a responsabilidade.
    - Em “Resultados”, escolha o 4º ano: o quadro de pontos de melhoria mostra cada questão em cada colégio.
    - Em “Avaliações”, troque o gabarito da questão 12 do 4º ano para A. Como já há respostas lançadas, o site pede um motivo, recalcula tudo e mostra um aviso nos resultados das turmas do 4º ano.
 4. **E-mails enviados.** Nesta versão os e-mails não saem de verdade: ficam na página “E-mails enviados” (link no rodapé da tela inicial). Abra o link de um e-mail para entrar direto na conta da pessoa.
@@ -46,8 +46,8 @@ Duas abas abertas ao mesmo tempo, cada uma num perfil, mostram uma mudança apar
 | Lista de alunos | Inclui, corrige e tira alunos da própria turma; a coordenação é avisada | Faz tudo o que o professor faz, em todas as turmas, e muda alunos de turma; toma ciência dos avisos | Vê só quantos são |
 | Provas | Não imprime | Baixa e imprime todas as provas; folhas de respostas do 5º ano | Envia os PDFs e cuida dos gabaritos |
 | Professores | Não | Cadastra (o link vai por e-mail), desativa e diz quem cuida de cada turma | Vê |
-| Equipe | Não | A pessoa responsável inclui e tira pessoas da coordenação | A pessoa responsável define quem edita e quem só visualiza |
-| Colégios | Não | Não | Cada colégio fica com uma pessoa da Solar, que define a pessoa responsável pela coordenação |
+| Equipe | Não | A pessoa responsável (escolhida pela Solar) inclui e tira pessoas da coordenação | A pessoa responsável define quem edita e quem só visualiza |
+| Colégios | Não | Não | Cada colégio fica com uma pessoa da Solar, que escolhe a pessoa responsável pela coordenação entre a equipe do colégio, ou cadastra uma nova |
 
 Nesta versão de teste as regras valem só nas telas. Na versão final, o servidor só entrega o que cada pessoa pode ver.
 
