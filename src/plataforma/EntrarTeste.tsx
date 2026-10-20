@@ -3,7 +3,8 @@ import { useState, type FormEvent } from 'react'
 import { Moldura } from './Portao'
 import { sessao } from './sessao'
 
-type Resposta = { ok?: boolean; mensagem?: string; token_hash?: string }
+// Com o modo de testes ligado no servidor (decisão 13 do PLANO), "pedir" devolve o código em vez de mandar e-mail.
+type Resposta = { ok?: boolean; mensagem?: string; token_hash?: string; codigo?: string; modo_testes?: boolean }
 
 async function acesso(corpo: Record<string, string>): Promise<{ status: number; json: Resposta }> {
   const a = sessao().ambiente()!
@@ -35,7 +36,11 @@ export function EntrarTeste() {
     setMensagem(null)
     try {
       const r = await acesso({ acao: 'pedir', email: email.trim() })
-      if (r.json.ok) {
+      if (r.json.ok && r.json.modo_testes && r.json.codigo) {
+        setEtapa('codigo')
+        setCodigo(r.json.codigo)
+        setMensagem({ texto: 'Modo de testes: o código não vai por e-mail e já está preenchido abaixo. Clique em Entrar.', erro: false })
+      } else if (r.json.ok) {
         setEtapa('codigo')
         setMensagem({ texto: `Mandamos um código de 4 dígitos para ${email.trim()}. Ele vale por 15 minutos.`, erro: false })
       } else {
@@ -75,8 +80,9 @@ export function EntrarTeste() {
   return (
     <Moldura titulo="Entrar">
       <p className="entrada-sub">
-        Ambiente de teste da Plataforma Solar, com o banco de teste. Entre com o e-mail cadastrado e o código de 4 dígitos. Pessoas de teste (e-mail
-        terminado em .test) não recebem e-mail: o código delas sai do workflow “Código de teste” do plataforma-infra; use “Já tenho um código”.
+        Ambiente de teste da Plataforma Solar, com o banco de teste. Entre com o e-mail cadastrado e o código de 4 dígitos. Com o modo de testes
+        ligado, o código aparece aqui mesmo, em vez de ir por e-mail. Pessoas de teste (e-mail terminado em .test) não recebem e-mail: o código
+        delas sai do workflow “Código de teste” do plataforma-infra; use “Já tenho um código”.
       </p>
       {etapa === 'email' ? (
         <form className="cartao form" onSubmit={pedir} noValidate>

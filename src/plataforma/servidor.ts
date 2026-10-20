@@ -132,9 +132,11 @@ async function mandarConvite(convite: Id, email: string) {
     avisar('perigo', `O convite para ${email} não saiu: sem conexão. Use “Reenviar convite” depois.`)
     return
   }
-  const j = (await r.json().catch(() => ({}))) as { ok?: boolean; simulado?: boolean; mensagem?: string }
+  const j = (await r.json().catch(() => ({}))) as { ok?: boolean; simulado?: boolean; modo_testes?: boolean; mensagem?: string }
   if (r.ok && j.ok) {
-    if (j.simulado) avisar('info', `${email} é um endereço de teste: o convite não sai de verdade.`)
+    if (j.simulado && j.modo_testes)
+      avisar('info', `Modo de testes: o convite para ${email} não sai por e-mail. A pessoa entra pela tela Entrar com este e-mail, e o código aparece na tela.`)
+    else if (j.simulado) avisar('info', `${email} é um endereço de teste: o convite não sai de verdade.`)
     else avisar('sucesso', `Convite enviado para ${email}.`)
   } else {
     avisar('perigo', `O convite para ${email} não saiu: ${j.mensagem ?? 'erro no envio'}. Use “Reenviar convite” daqui a pouco.`)
