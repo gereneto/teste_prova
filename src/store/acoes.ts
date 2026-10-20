@@ -27,17 +27,33 @@ import {
   type TipoMudancaAluno,
   type Turma,
 } from '../types'
+import { PLATAFORMA } from '../plataforma/modo'
+import { servidor } from '../plataforma/ponte'
 import { apagarPdf, apagarTodosPdfs, salvarPdf } from './arquivos'
 import { atualizar, getDb, substituirDados } from './db'
 import { getPerfil } from './perfil'
 
+// Cada ação muda os dados na hora (as telas respondem sem esperar) e, na plataforma, manda a mudança ao banco
+// pela ponte (servidor()); na demonstração, servidor() é null e fica tudo no navegador. As regras de quem pode o
+// quê ficam no banco: se ele recusar, a tela mostra o motivo e os dados voltam ao que estava lá.
+
+/** Na plataforma, os ids são os do banco (uuid), criados aqui para a tela já ter o registro novo. */
 export function novoId(prefixo: string): Id {
+  if (PLATAFORMA) return crypto.randomUUID()
   const sufixo =
     typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID().slice(0, 8)
       : Math.random().toString(36).slice(2, 10)
   return `${prefixo}-${sufixo}`
 }
+
+/** O colégio do perfil da coordenação (a mesma pessoa pode estar em mais de um colégio). */
+const colegioDoPerfil = (): Id | null => {
+  const perfil = getPerfil()
+  return perfil && perfil.papel !== 'solar' ? perfil.colegioId : null
+}
+
+const papelNoBanco = (papel: PapelSolar) => `solar_${papel}`
 
 const ALFABETO_TOKEN = 'abcdefghijkmnpqrstuvwxyz23456789'
 
@@ -109,6 +125,13 @@ const papelSolar = (papel: PapelSolar) =>
 
 /** Manda de novo o mesmo link (o antigo continua valendo). Devolve o e-mail de destino. */
 export function reenviarLink(tipo: 'professor' | 'coordenador' | 'solar', id: Id): string | null {
+  const banco = servidor()
+  if (banco) {
+    // Na plataforma, um convite novo (sem link: a pessoa entra pelo código).
+    banco.rpc('plataforma', 'reenviar_convite', { pessoa: id }, { convite: true })
+    const db = getDb()
+    return (tipo === 'professor' ? db.professores : tipo === 'coordenador' ? db.coordenadores : db.equipeSolar).find((x) => x.id === id)?.email ?? null
+  }
   let enviado: string | null = null
   atualizar((db) => {
     if (tipo === 'professor') {
@@ -136,17 +159,24 @@ export type DadosColegio = Pick<Colegio, 'nome' | 'cidade' | 'uf'>
 
 export function criarColegio(dados: DadosColegio, responsavel: Contato | null): Id {
   const id = novoId('col')
+  const idResponsavel = novoId('coord')
   const perfil = getPerfil()
   atualizar((db) => {
     db.colegios.push({ id, ...dados, membroSolarId: perfil?.papel === 'solar' ? perfil.membroId : null })
     registrar(db, `Cadastrou o ${dados.nome}.`, { colegioId: id })
     if (responsavel?.nome) {
-      const pessoa = { id: novoId('coord'), colegioId: id, ...responsavel, responsavel: true, token: novoToken() }
+      const pessoa = { id: idResponsavel, colegioId: id, ...responsavel, responsavel: true, token: novoToken() }
       db.coordenadores.push(pessoa)
       enviarLink(db, pessoa, papelDoCoordenador(db, id, true), 'convite')
       registrar(db, `Definiu ${responsavel.nome} como responsável pela coordenação e enviou o link de acesso para ${responsavel.email}.`, { colegioId: id })
     }
   })
+  servidor()?.rpc(
+    'plataforma',
+    'criar_colegio',
+    { id, ...dados, responsavel: responsavel?.nome ? { id: idResponsavel, ...responsavel } : null },
+    { convite: true },
+  )
   return id
 }
 
@@ -155,6 +185,7 @@ export function editarColegio(id: Id, dados: DadosColegio) {
     const colegio = db.colegios.find((c) => c.id === id)
     if (colegio) Object.assign(colegio, dados)
   })
+  servidor()?.rpc('plataforma', 'editar_colegio', { id, ...dados })
 }
 
 /** A pessoa responsável pela equipe Solar escolhe quem da Solar cuida de cada colégio. */
@@ -166,6 +197,7 @@ export function definirMembroSolarDoColegio(colegioId: Id, membroId: Id | null) 
     const nome = db.equipeSolar.find((m) => m.id === membroId)?.nome
     registrar(db, nome ? `${nome} passou a cuidar do ${colegio.nome} pela Solar.` : `O ${colegio.nome} ficou sem ninguém da Solar cuidando dele.`, { colegioId })
   })
+  servidor()?.rpc('plataforma', 'definir_cuidado', { colegio: colegioId, pessoa: membroId })
 }
 
 /**
@@ -174,6 +206,7 @@ export function definirMembroSolarDoColegio(colegioId: Id, membroId: Id | null) 
  */
 export function definirResponsavelDoColegio(colegioId: Id, contato: Contato): Envio {
   let emailEnviado: string | null = null
+  const idNovo = novoId('coord')
   atualizar((db) => {
     const equipe = db.coordenadores.filter((c) => c.colegioId === colegioId)
     equipe.forEach((c) => (c.responsavel = false))
@@ -181,23 +214,26 @@ export function definirResponsavelDoColegio(colegioId: Id, contato: Contato): En
     if (existente) {
       Object.assign(existente, { nome: contato.nome, telefone: contato.telefone, responsavel: true })
     } else {
-      const pessoa = { id: novoId('coord'), colegioId, ...contato, responsavel: true, token: novoToken() }
+      const pessoa = { id: idNovo, colegioId, ...contato, responsavel: true, token: novoToken() }
       db.coordenadores.push(pessoa)
       emailEnviado = enviarLink(db, pessoa, papelDoCoordenador(db, colegioId, true), 'convite')
     }
     registrar(db, `Definiu ${contato.nome} como responsável pela coordenação${emailEnviado ? ` e enviou o link de acesso para ${emailEnviado}` : ''}.`, { colegioId })
   })
+  servidor()?.rpc('plataforma', 'definir_responsavel_colegio', { colegio: colegioId, id: idNovo, ...contato }, { convite: true })
   return { emailEnviado }
 }
 
 export function adicionarCoordenador(colegioId: Id, contato: Contato): Envio {
   let emailEnviado: string | null = null
+  const id = novoId('coord')
   atualizar((db) => {
-    const pessoa = { id: novoId('coord'), colegioId, ...contato, responsavel: false, token: novoToken() }
+    const pessoa = { id, colegioId, ...contato, responsavel: false, token: novoToken() }
     db.coordenadores.push(pessoa)
     emailEnviado = enviarLink(db, pessoa, papelDoCoordenador(db, colegioId, false), 'convite')
     registrar(db, `Incluiu ${contato.nome} na equipe da coordenação e enviou o link de acesso para ${contato.email}.`, { colegioId })
   })
+  servidor()?.rpc('plataforma', 'adicionar_coordenacao', { colegio: colegioId, id, ...contato }, { convite: true })
   return { emailEnviado }
 }
 
@@ -215,38 +251,45 @@ export function editarCoordenador(id: Id, contato: Contato): Envio {
       registrar(db, `Corrigiu o e-mail de ${pessoa.nome} e enviou um novo link de acesso.`, { colegioId: pessoa.colegioId })
     }
   })
+  servidor()?.rpc('plataforma', 'editar_pessoa', { pessoa: id, ...contato }, { convite: true })
   return { emailEnviado }
 }
 
 export function removerCoordenador(id: Id) {
+  const colegioId = colegioDoPerfil() ?? getDb().coordenadores.find((c) => c.id === id)?.colegioId ?? null
   atualizar((db) => {
-    const pessoa = db.coordenadores.find((c) => c.id === id)
+    const pessoa = db.coordenadores.find((c) => c.id === id && c.colegioId === colegioId)
     if (!pessoa || pessoa.responsavel) return
-    db.coordenadores = db.coordenadores.filter((c) => c.id !== id)
+    db.coordenadores = db.coordenadores.filter((c) => !(c.id === id && c.colegioId === colegioId))
     registrar(db, `Tirou ${pessoa.nome} da equipe da coordenação.`, { colegioId: pessoa.colegioId })
   })
+  servidor()?.rpc('plataforma', 'desativar_vinculo', { pessoa: id, colegio: colegioId, papel: 'coordenacao' })
 }
 
 /** O responsável passa o papel para outra pessoa da equipe e continua na equipe sem ele. */
 export function passarResponsabilidade(novoResponsavelId: Id) {
+  const colegioId = colegioDoPerfil() ?? getDb().coordenadores.find((c) => c.id === novoResponsavelId)?.colegioId ?? null
   atualizar((db) => {
-    const novo = db.coordenadores.find((c) => c.id === novoResponsavelId)
+    const novo = db.coordenadores.find((c) => c.id === novoResponsavelId && c.colegioId === colegioId)
     if (!novo) return
     db.coordenadores.filter((c) => c.colegioId === novo.colegioId).forEach((c) => (c.responsavel = c.id === novo.id))
     registrar(db, `Passou a responsabilidade pela coordenação para ${novo.nome}.`, { colegioId: novo.colegioId })
   })
+  servidor()?.rpc('plataforma', 'passar_responsabilidade_colegio', { colegio: colegioId, pessoa: novoResponsavelId })
 }
 
 // Equipe Solar
 
 export function adicionarMembroSolar(contato: Contato, papel: Exclude<PapelSolar, 'responsavel'>): Envio {
   let emailEnviado: string | null = null
+  const id = novoId('solar')
   atualizar((db) => {
-    const membro = { id: novoId('solar'), ...contato, papel, token: novoToken() }
+    const membro = { id, ...contato, papel, token: novoToken() }
     db.equipeSolar.push(membro)
     emailEnviado = enviarLink(db, membro, papelSolar(papel), 'convite')
     registrar(db, `Incluiu ${contato.nome} na equipe Solar, com ${papel === 'edicao' ? 'permissão de edição' : 'permissão só de visualização'}.`)
   })
+  servidor()?.rpc('plataforma', 'adicionar_solar', { id, ...contato, papel: papelNoBanco(papel) }, { convite: true })
   return { emailEnviado }
 }
 
@@ -263,6 +306,7 @@ export function editarMembroSolar(id: Id, contato: Contato): Envio {
       registrar(db, `Corrigiu o e-mail de ${membro.nome} e enviou um novo link de acesso.`)
     }
   })
+  servidor()?.rpc('plataforma', 'editar_pessoa', { pessoa: id, ...contato }, { convite: true })
   return { emailEnviado }
 }
 
@@ -275,9 +319,11 @@ export function mudarPapelSolar(id: Id, papel: Exclude<PapelSolar, 'responsavel'
     if (papel === 'visualizacao') for (const c of db.colegios) if (c.membroSolarId === id) c.membroSolarId = null
     registrar(db, `${membro.nome} passou a ter ${papel === 'edicao' ? 'permissão de edição' : 'permissão só de visualização'}.`)
   })
+  servidor()?.rpc('plataforma', 'mudar_papel_solar', { pessoa: id, papel: papelNoBanco(papel) })
 }
 
 export function removerMembroSolar(id: Id) {
+  const papel = getDb().equipeSolar.find((m) => m.id === id)?.papel
   atualizar((db) => {
     const membro = db.equipeSolar.find((m) => m.id === id)
     if (!membro || membro.papel === 'responsavel') return
@@ -285,6 +331,7 @@ export function removerMembroSolar(id: Id) {
     for (const c of db.colegios) if (c.membroSolarId === id) c.membroSolarId = null
     registrar(db, `Tirou ${membro.nome} da equipe Solar.`)
   })
+  if (papel && papel !== 'responsavel') servidor()?.rpc('plataforma', 'desativar_vinculo', { pessoa: id, colegio: null, papel: papelNoBanco(papel) })
 }
 
 /** Quem era responsável passa a ter permissão de edição. */
@@ -298,6 +345,7 @@ export function passarResponsabilidadeSolar(id: Id) {
     novo.papel = 'responsavel'
     registrar(db, `Passou a responsabilidade pela equipe Solar para ${novo.nome}.`)
   })
+  servidor()?.rpc('plataforma', 'passar_responsabilidade_solar', { pessoa: id })
 }
 
 // Professores
@@ -312,6 +360,7 @@ export function criarProfessor(colegioId: Id, dados: { nome: string; email: stri
     emailEnviado = enviarLink(db, professor, papelDoProfessor(db, colegioId), 'convite')
     registrar(db, `Cadastrou ${dados.nome} como professor(a) e enviou o link de acesso para ${dados.email}.`, { colegioId })
   })
+  servidor()?.rpc('plataforma', 'adicionar_professor', { colegio: colegioId, id, ...dados }, { convite: true })
   return { id, emailEnviado }
 }
 
@@ -328,13 +377,15 @@ export function editarProfessor(id: Id, dados: { nome: string; email: string }):
       registrar(db, `Corrigiu o e-mail de ${professor.nome} e enviou um novo link de acesso.`, { colegioId: professor.colegioId })
     }
   })
+  servidor()?.rpc('plataforma', 'editar_pessoa', { pessoa: id, ...dados, telefone: null }, { convite: true })
   return { emailEnviado }
 }
 
 /** Quem sai do colégio perde o acesso e sai das turmas do ano, mas o nome continua no histórico. */
 export function desativarProfessor(id: Id) {
+  const colegioId = colegioDoPerfil() ?? getDb().professores.find((p) => p.id === id)?.colegioId ?? null
   atualizar((db) => {
-    const professor = db.professores.find((p) => p.id === id)
+    const professor = db.professores.find((p) => p.id === id && p.colegioId === colegioId)
     if (!professor) return
     professor.ativo = false
     const turmas = db.turmas.filter((t) => t.anoLetivo === db.config.anoLetivo && t.professorIds.includes(id))
@@ -344,15 +395,18 @@ export function desativarProfessor(id: Id) {
       colegioId: professor.colegioId,
     })
   })
+  servidor()?.rpc('plataforma', 'desativar_vinculo', { pessoa: id, colegio: colegioId, papel: 'professor' })
 }
 
 export function reativarProfessor(id: Id) {
+  const colegioId = colegioDoPerfil() ?? getDb().professores.find((p) => p.id === id)?.colegioId ?? null
   atualizar((db) => {
-    const professor = db.professores.find((p) => p.id === id)
+    const professor = db.professores.find((p) => p.id === id && p.colegioId === colegioId)
     if (!professor) return
     professor.ativo = true
     registrar(db, `Reativou o acesso de ${professor.nome}.`, { colegioId: professor.colegioId })
   })
+  servidor()?.rpc('plataforma', 'reativar_vinculo', { pessoa: id, colegio: colegioId, papel: 'professor' })
 }
 
 // Turmas
@@ -365,6 +419,7 @@ export function criarTurma(colegioId: Id, dados: DadosTurma): Id {
     db.turmas.push({ id, colegioId, anoLetivo: db.config.anoLetivo, ...dados })
     registrar(db, `Criou a turma ${turmaNome(dados)}.`, { colegioId, turmaId: id })
   })
+  servidor()?.rpc('prova', 'criar_turma', { id, colegio: colegioId, serie: dados.serie, nome: dados.nome, turno: dados.turno, professores: dados.professorIds })
   return id
 }
 
@@ -373,6 +428,7 @@ export function editarTurma(id: Id, dados: DadosTurma) {
     const turma = db.turmas.find((t) => t.id === id)
     if (turma) Object.assign(turma, dados)
   })
+  servidor()?.rpc('prova', 'editar_turma', { id, serie: dados.serie, nome: dados.nome, turno: dados.turno, professores: dados.professorIds })
 }
 
 export function definirProfessoresDaTurma(turmaId: Id, professorIds: Id[]) {
@@ -386,6 +442,7 @@ export function definirProfessoresDaTurma(turmaId: Id, professorIds: Id[]) {
       turmaId,
     })
   })
+  servidor()?.rpc('prova', 'definir_professores', { turma: turmaId, professores: professorIds })
 }
 
 export function removerTurma(id: Id) {
@@ -394,6 +451,7 @@ export function removerTurma(id: Id) {
     db.alunos = db.alunos.filter((a) => a.turmaId !== id)
     db.lancamentos = db.lancamentos.filter((l) => l.turmaId !== id)
   })
+  servidor()?.rpc('prova', 'remover_turma', { turma: id })
 }
 
 // Alunos. A lista é editada pela coordenação e pelos professores da turma. As mudanças feitas por
@@ -479,30 +537,41 @@ function registrarMudancaAluno(
 
 /** Cria o aluno com o id dado (a linha nova do editor já nasce com ele, para não perder o foco). */
 export function criarAluno(turmaId: Id, id: Id, dados: Partial<DadosAluno>) {
+  if (getDb().alunos.some((a) => a.id === id)) return
+  const aluno: Aluno = { id, turmaId, numero: '', iniciais: '', sexo: null, anoIngresso: null, ativo: true, ...limpar(dados) }
   atualizar((db) => {
-    if (db.alunos.some((a) => a.id === id)) return
-    const aluno: Aluno = { id, turmaId, numero: '', iniciais: '', sexo: null, anoIngresso: null, ativo: true, ...limpar(dados) }
     db.alunos.push(aluno)
     registrarMudancaAluno(db, db.alunos.at(-1)!, 'inclusao')
+  })
+  servidor()?.rpc('prova', 'criar_aluno', {
+    id,
+    turma: turmaId,
+    numero: aluno.numero,
+    iniciais: aluno.iniciais,
+    sexo: aluno.sexo,
+    ano_ingresso: aluno.anoIngresso,
   })
 }
 
 /** Muda um ou mais campos do aluno. Campo vazio é permitido: o site lembra depois que falta. */
 export function atualizarAluno(id: Id, dados: Partial<DadosAluno>) {
+  const antes = getDb().alunos.find((a) => a.id === id)
+  if (!antes) return
+  const novos = limpar(dados)
+  const campos: NonNullable<Evento['campos']> = {}
+  for (const campo of Object.keys(novos) as CampoAluno[]) {
+    const de = valorDoCampo(antes, campo)
+    const para = valorDoCampo({ ...antes, ...novos }, campo)
+    if (de !== para) campos[campo] = { de, para }
+  }
+  if (!Object.keys(campos).length) return
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno) return
-    const novos = limpar(dados)
-    const campos: NonNullable<Evento['campos']> = {}
-    for (const campo of Object.keys(novos) as CampoAluno[]) {
-      const de = valorDoCampo(aluno, campo)
-      const para = valorDoCampo({ ...aluno, ...novos }, campo)
-      if (de !== para) campos[campo] = { de, para }
-    }
-    if (!Object.keys(campos).length) return
     Object.assign(aluno, novos)
     registrarMudancaAluno(db, aluno, 'correcao', { campos })
   })
+  servidor()?.rpc('prova', 'atualizar_aluno', { aluno: id, turma: antes.turmaId, dados: novos })
 }
 
 /** Preenche o ano de entrada de todos os alunos ativos da turma que ainda estão sem ele. */
@@ -515,10 +584,12 @@ export function definirIngressoDosSemAno(turmaId: Id, anoIngresso: number) {
       }
     }
   })
+  servidor()?.rpc('prova', 'definir_ingresso_sem_ano', { turma: turmaId, ano: anoIngresso })
 }
 
 /** O aluno sai da lista; as respostas já lançadas continuam nos resultados. */
 export function registrarSaida(id: Id, motivo: MotivoSaida) {
+  const turmaId = getDb().alunos.find((a) => a.id === id)?.turmaId
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno) return
@@ -526,21 +597,25 @@ export function registrarSaida(id: Id, motivo: MotivoSaida) {
     aluno.saida = { em: hojeIso(), motivo }
     registrarMudancaAluno(db, aluno, 'saida', { motivo })
   })
+  if (turmaId) servidor()?.rpc('prova', 'registrar_saida', { aluno: id, turma: turmaId, motivo })
 }
 
 export const temRespostas = (db: Db, alunoId: Id) => db.lancamentos.some((l) => l.respostas[alunoId])
 
 /** Para cadastro feito por engano: só vale para quem ainda não tem respostas lançadas. */
 export function excluirCadastroDoAluno(id: Id) {
+  const turmaId = getDb().alunos.find((a) => a.id === id)?.turmaId
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno || db.lancamentos.some((l) => l.respostas[id])) return
     db.alunos = db.alunos.filter((a) => a.id !== id)
     registrarMudancaAluno(db, aluno, 'exclusao')
   })
+  if (turmaId) servidor()?.rpc('prova', 'excluir_aluno', { aluno: id, turma: turmaId })
 }
 
 export function reativarAluno(id: Id) {
+  const turmaId = getDb().alunos.find((a) => a.id === id)?.turmaId
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno) return
@@ -548,10 +623,12 @@ export function reativarAluno(id: Id) {
     delete aluno.saida
     registrarMudancaAluno(db, aluno, 'volta')
   })
+  if (turmaId) servidor()?.rpc('prova', 'reativar_aluno', { aluno: id, turma: turmaId })
 }
 
 /** As respostas já lançadas ficam na turma antiga; na nova, o aluno continua com o mesmo número (confira se não repete). */
 export function mudarDeTurma(id: Id, novaTurmaId: Id) {
+  const turmaAntes = getDb().alunos.find((a) => a.id === id)?.turmaId
   atualizar((db) => {
     const aluno = db.alunos.find((a) => a.id === id)
     if (!aluno || aluno.turmaId === novaTurmaId) return
@@ -561,6 +638,7 @@ export function mudarDeTurma(id: Id, novaTurmaId: Id) {
     registrar(db, texto, { colegioId: colegioDaTurma(db, antiga), turmaId: antiga })
     registrar(db, texto, { colegioId: colegioDaTurma(db, novaTurmaId), turmaId: novaTurmaId })
   })
+  if (turmaAntes && turmaAntes !== novaTurmaId) servidor()?.rpc('prova', 'mudar_de_turma', { aluno: id, turma: turmaAntes, nova: novaTurmaId })
 }
 
 /** A coordenação marca que viu as mudanças feitas pelos professores. */
@@ -570,6 +648,7 @@ export function marcarCiente(ids: Id[]) {
     const em = agoraIso()
     for (const evento of db.historico) if (ids.includes(evento.id) && !evento.ciente) evento.ciente = { por, em }
   })
+  servidor()?.rpc('prova', 'marcar_ciente', { ids })
 }
 
 // Avaliações e provas
@@ -593,19 +672,39 @@ export function cadernoEmBranco(avaliacaoId: Id, serie: Serie, disciplina: Disci
 /** Cria a avaliação com as provas de Português e de Matemática de cada ano escolhido. */
 export function criarAvaliacao(dados: DadosAvaliacao, series: Serie[]): Id {
   const id = novoId('av')
+  const cadernos = series.flatMap((serie) => DISCIPLINAS_DA_PROVA.map((disciplina) => cadernoEmBranco(id, serie, disciplina)))
   atualizar((db) => {
     db.avaliacoes.push({ id, anoLetivo: Number(dados.aplicacaoInicio.slice(0, 4)), ...dados })
-    for (const serie of series) for (const disciplina of DISCIPLINAS_DA_PROVA) db.cadernos.push(cadernoEmBranco(id, serie, disciplina))
+    db.cadernos.push(...cadernos)
     registrar(db, `Criou a ${dados.titulo}.`)
+  })
+  servidor()?.rpc('prova', 'criar_avaliacao', {
+    id,
+    titulo: dados.titulo,
+    inicio: dados.aplicacaoInicio,
+    fim: dados.aplicacaoFim,
+    prazo: dados.prazoLancamento,
+    cadernos: cadernos.map(cadernoParaOBanco),
   })
   return id
 }
+
+/** Um caderno novo como o banco recebe (privado.inserir_caderno). */
+const cadernoParaOBanco = (c: Caderno) => ({
+  id: c.id,
+  serie: c.serie,
+  disciplina: c.disciplina,
+  numAlternativas: c.numAlternativas,
+  usaFolhaRespostas: c.usaFolhaRespostas,
+  questoes: c.questoes,
+})
 
 export function editarAvaliacao(id: Id, dados: DadosAvaliacao) {
   atualizar((db) => {
     const avaliacao = db.avaliacoes.find((a) => a.id === id)
     if (avaliacao) Object.assign(avaliacao, { ...dados, anoLetivo: Number(dados.aplicacaoInicio.slice(0, 4)) })
   })
+  servidor()?.rpc('prova', 'editar_avaliacao', { id, titulo: dados.titulo, inicio: dados.aplicacaoInicio, fim: dados.aplicacaoFim, prazo: dados.prazoLancamento })
 }
 
 export function removerAvaliacao(id: Id) {
@@ -617,7 +716,9 @@ export function removerAvaliacao(id: Id) {
     db.lancamentos = db.lancamentos.filter((l) => !cadernos.includes(l.cadernoId))
     registrar(db, `Excluiu a ${titulo ?? 'avaliação'}.`)
   })
-  cadernos.forEach((c) => apagarPdf(c).catch(() => {}))
+  const banco = servidor()
+  if (banco) banco.rpc('prova', 'remover_avaliacao', { id }, { depois: () => banco.removerPdf(cadernos) })
+  else cadernos.forEach((c) => apagarPdf(c).catch(() => {}))
 }
 
 export function adicionarCaderno(avaliacaoId: Id, serie: Serie, disciplina: Disciplina): Id {
@@ -625,6 +726,7 @@ export function adicionarCaderno(avaliacaoId: Id, serie: Serie, disciplina: Disc
   atualizar((db) => {
     db.cadernos.push(caderno)
   })
+  servidor()?.rpc('prova', 'adicionar_caderno', { avaliacao: avaliacaoId, caderno: cadernoParaOBanco(caderno) })
   return caderno.id
 }
 
@@ -633,14 +735,19 @@ export function removerCaderno(id: Id) {
     db.cadernos = db.cadernos.filter((c) => c.id !== id)
     db.lancamentos = db.lancamentos.filter((l) => l.cadernoId !== id)
   })
-  apagarPdf(id).catch(() => {})
+  const banco = servidor()
+  if (banco) banco.rpc('prova', 'remover_caderno', { id }, { depois: () => banco.removerPdf([id]) })
+  else apagarPdf(id).catch(() => {})
 }
 
-function comCaderno(id: Id, alterar: (caderno: Draft<Caderno>, db: Draft<Db>) => void) {
+/** Muda a prova na hora e, na plataforma, grava a prova inteira (com o motivo, se a mudança de correção tiver um). */
+function comCaderno(id: Id, alterar: (caderno: Draft<Caderno>, db: Draft<Db>) => void, motivo?: string) {
   atualizar((db) => {
     const caderno = db.cadernos.find((c) => c.id === id)
     if (caderno) alterar(caderno, db)
   })
+  const caderno = getDb().cadernos.find((c) => c.id === id)
+  if (caderno) servidor()?.salvarCaderno(caderno, motivo)
 }
 
 export const temRespostasNaProva = (db: Db, cadernoId: Id) =>
@@ -694,7 +801,7 @@ export function editarQuestao(cadernoId: Id, indice: number, alteracao: Partial<
     if (antes.anulada !== questao.anulada) texto = `${questao.anulada ? 'Anulou a' : 'Desfez a anulação da'} questão ${indice + 1} da ${prova}`
     else texto = `Mudou o gabarito da questão ${indice + 1} da ${prova}, de ${antes.gabarito ?? 'nenhum'} para ${questao.gabarito ?? 'nenhum'}`
     registrar(db, `${texto}${motivo ? `. Motivo: ${motivo}` : ''}. Os resultados foram recalculados.`, { cadernoId, avisarTurmas: true })
-  })
+  }, motivo)
 }
 
 /** Preenche o gabarito a partir de uma sequência como "BDACB..."; espaços e vírgulas são ignorados. */
@@ -710,15 +817,18 @@ export function aplicarGabarito(cadernoId: Id, letras: Letra[], motivo?: string)
     if (db.lancamentos.some((l) => l.cadernoId === cadernoId && Object.keys(l.respostas).length)) {
       registrar(db, `Mudou o gabarito das questões ${mudadas.join(', ')} da ${nomeDaProva(caderno, db)}${motivo ? `. Motivo: ${motivo}` : ''}. Os resultados foram recalculados.`, { cadernoId, avisarTurmas: true })
     }
-  })
+  }, motivo)
 }
 
 /** Marca o gabarito como conferido com a prova impressa. */
 export function conferirGabarito(cadernoId: Id) {
-  comCaderno(cadernoId, (caderno, db) => {
+  atualizar((db) => {
+    const caderno = db.cadernos.find((c) => c.id === cadernoId)
+    if (!caderno) return
     caderno.conferencia = { por: autorAtual(), em: agoraIso() }
     registrar(db, `Conferiu o gabarito da ${nomeDaProva(caderno, db)}.`, { cadernoId })
   })
+  servidor()?.rpc('prova', 'conferir_gabarito', { id: cadernoId })
 }
 
 export function editarComentario(cadernoId: Id, indice: number, letra: Letra, texto: string) {
@@ -740,17 +850,24 @@ export function editarComoRetomar(cadernoId: Id, indice: number, texto: string) 
 }
 
 export async function enviarPdf(cadernoId: Id, arquivo: File) {
-  await salvarPdf(cadernoId, arquivo)
-  comCaderno(cadernoId, (caderno) => {
-    caderno.pdf = { nome: arquivo.name, tamanho: arquivo.size, origem: 'enviado', enviadoEm: agoraIso() }
+  const banco = servidor()
+  // Na plataforma o PDF vai para o Storage (bucket provas); na demonstração, para o IndexedDB deste navegador.
+  if (banco) await banco.enviarPdf(cadernoId, arquivo)
+  else await salvarPdf(cadernoId, arquivo)
+  atualizar((db) => {
+    const caderno = db.cadernos.find((c) => c.id === cadernoId)
+    if (caderno) caderno.pdf = { nome: arquivo.name, tamanho: arquivo.size, origem: 'enviado', enviadoEm: agoraIso() }
   })
 }
 
 export function removerPdf(cadernoId: Id) {
-  comCaderno(cadernoId, (caderno) => {
-    caderno.pdf = null
+  atualizar((db) => {
+    const caderno = db.cadernos.find((c) => c.id === cadernoId)
+    if (caderno) caderno.pdf = null
   })
-  apagarPdf(cadernoId).catch(() => {})
+  const banco = servidor()
+  if (banco) banco.rpc('prova', 'remover_pdf', { id: cadernoId }, { depois: () => banco.removerPdf([cadernoId]) })
+  else apagarPdf(cadernoId).catch(() => {})
 }
 
 // Lançamento de respostas
@@ -777,6 +894,7 @@ export function marcarQuestao(cadernoId: Id, turmaId: Id, alunoId: Id, indice: n
     resposta.marcas = marcas.join('')
     resposta.atualizadoEm = agoraIso()
   })
+  paraAFila(cadernoId, turmaId, alunoId)
 }
 
 export function definirSituacao(cadernoId: Id, turmaId: Id, alunoId: Id, situacao: Situacao) {
@@ -785,6 +903,13 @@ export function definirSituacao(cadernoId: Id, turmaId: Id, alunoId: Id, situaca
     resposta.situacao = situacao
     resposta.atualizadoEm = agoraIso()
   })
+  paraAFila(cadernoId, turmaId, alunoId)
+}
+
+/** Na plataforma, a resposta do aluno vai para a fila do lançamento (fica no aparelho até o banco confirmar). */
+function paraAFila(cadernoId: Id, turmaId: Id, alunoId: Id) {
+  const resposta = getDb().lancamentos.find((l) => l.id === idLancamento(cadernoId, turmaId))?.respostas[alunoId]
+  if (resposta) servidor()?.resposta(cadernoId, turmaId, alunoId, resposta)
 }
 
 export function concluirLancamento(cadernoId: Id, turmaId: Id) {
@@ -793,6 +918,7 @@ export function concluirLancamento(cadernoId: Id, turmaId: Id) {
     const disciplina = db.cadernos.find((c) => c.id === cadernoId)?.disciplina
     registrar(db, `Concluiu o lançamento da prova de ${disciplina ?? 'avaliação'} do ${descreverTurma(db, turmaId)}.`, { colegioId: colegioDaTurma(db, turmaId), turmaId })
   })
+  servidor()?.rpc('prova', 'concluir_lancamento', { caderno: cadernoId, turma: turmaId })
 }
 
 // Configurações e dados

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { faixaDe, NOMES_FAIXAS, type StatusLancamento } from '../lib/estatisticas'
 import { pct, plural } from '../lib/formato'
+import { chave as chaveLocal } from '../plataforma/modo'
 
 /** Cabeçalho de página no formato SectionHeading do design system: rótulo, título e subtítulo. */
 export function Cabecalho(props: {
@@ -263,7 +264,7 @@ const lerDispensado = (chave: string) => {
  * a uma linha com "Entendi", mas não some.
  */
 export function LembreteCooperacao(props: { chave: string; children?: ReactNode }) {
-  const chave = `prova-solar:lembrete:${props.chave}`
+  const chave = chaveLocal(`lembrete:${props.chave}`)
   const [curto, setCurto] = useState(() => lerDispensado(chave))
   function alternar(valor: boolean) {
     setCurto(valor)

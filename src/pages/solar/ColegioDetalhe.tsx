@@ -22,6 +22,7 @@ import { useDb } from '../../store/db'
 import { useRede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import { FormularioColegio } from './Colegios'
+import { PLATAFORMA } from '../../plataforma/modo'
 
 export default function ColegioDetalhe() {
   const { colegioId = '' } = useParams()
@@ -104,7 +105,7 @@ export default function ColegioDetalhe() {
 
       <Cartao
         titulo="Coordenação"
-        sub={`A pessoa responsável é definida ${membroSolar ? `por ${membroSolar.nome}, da Solar,` : 'pela Solar'} e cadastra as demais pessoas da equipe do colégio. Cada pessoa cadastrada recebe por e-mail o link de acesso.`}
+        sub={`A pessoa responsável é definida ${membroSolar ? `por ${membroSolar.nome}, da Solar,` : 'pela Solar'} e cadastra as demais pessoas da equipe do colégio. Cada pessoa cadastrada recebe por e-mail ${PLATAFORMA ? 'um convite' : 'o link de acesso'}.`}
         acoes={
           defineResponsavel &&
           !trocando && (

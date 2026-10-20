@@ -2,18 +2,23 @@ import { produce, type Draft } from 'immer'
 import { useSyncExternalStore } from 'react'
 import { gerarDadosExemplo, VERSAO_DADOS } from '../data/seed'
 import type { PainelRede } from '../lib/rede'
+import { dbVazio } from '../plataforma/carga'
+import { usePlataforma } from '../plataforma/estado'
+import { chave, PLATAFORMA } from '../plataforma/modo'
 import type { Db } from '../types'
 import { apagarTodosPdfs } from './arquivos'
 
-// Nesta versão de teste, tudo fica no localStorage do navegador. Quando houver servidor,
-// só este arquivo e acoes.ts precisam mudar: as telas continuam chamando as mesmas funções.
+// Os dados que as telas leem e as ações mudam (acoes.ts). As telas não sabem de onde eles vêm:
+// - na demonstração, tudo fica no localStorage do navegador, com os dados fictícios;
+// - na plataforma, os dados vêm do banco (plataforma/servidor.ts), só o que a pessoa pode ver. As ações mudam
+//   estes dados na hora e mandam a mudança ao banco; depois, a carga do banco substitui tudo.
 
-const CHAVE = 'prova-solar:dados'
+const CHAVE = chave('dados')
 const ESPERA_GRAVACAO_MS = 400
 
 const ouvintes = new Set<() => void>()
 const ouvintesSalvando = new Set<() => void>()
-let estado: Db = carregar()
+let estado: Db = PLATAFORMA ? dbVazio() : carregar()
 let salvando = false
 let gravacaoPendente: ReturnType<typeof setTimeout> | null = null
 
@@ -59,12 +64,13 @@ function gravarAgora() {
 }
 
 function agendarGravacao() {
+  if (PLATAFORMA) return // na plataforma quem guarda é o banco (e a fila do lançamento)
   definirSalvando(true)
   if (gravacaoPendente) clearTimeout(gravacaoPendente)
   gravacaoPendente = setTimeout(gravarAgora, ESPERA_GRAVACAO_MS)
 }
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !PLATAFORMA) {
   window.addEventListener('pagehide', gravarAgora)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && gravacaoPendente) gravarAgora()
@@ -97,8 +103,10 @@ export function useDb(): Db {
   return useSyncExternalStore(inscrever, getDb)
 }
 
+/** Há gravação em andamento? Na plataforma: funções do banco em andamento ou respostas na fila do lançamento. */
 export function useSalvando(): boolean {
-  return useSyncExternalStore(
+  const plataforma = usePlataforma()
+  const local = useSyncExternalStore(
     (fn) => {
       ouvintesSalvando.add(fn)
       return () => {
@@ -107,6 +115,8 @@ export function useSalvando(): boolean {
     },
     () => salvando,
   )
+  if (!PLATAFORMA) return local
+  return plataforma.ocupado > 0 || plataforma.fila.enviando || plataforma.fila.pendentes > 0
 }
 
 export function atualizar(receita: (rascunho: Draft<Db>) => void) {
@@ -116,10 +126,19 @@ export function atualizar(receita: (rascunho: Draft<Db>) => void) {
 }
 
 /** O painel da rede que o banco manda à Solar (na plataforma). Na demonstração não há: as telas calculam. */
-export const usePainelDoServidor = (): PainelRede | null => null
+export function usePainelDoServidor(): PainelRede | null {
+  const plataforma = usePlataforma()
+  return PLATAFORMA ? plataforma.painel : null
+}
 
 export function substituirDados(novo: Db) {
   estado = novo
   notificar()
   gravarAgora()
+}
+
+/** Os dados que vieram do banco (plataforma): substituem tudo, sem gravar no navegador. */
+export function trocarDados(novo: Db) {
+  estado = novo
+  notificar()
 }

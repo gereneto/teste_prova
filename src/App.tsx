@@ -12,6 +12,8 @@ import Emails from './pages/Emails'
 import Entrada from './pages/Entrada'
 import EntrarPorLink from './pages/EntrarPorLink'
 import PassoAPasso from './pages/PassoAPasso'
+import EntradaPlataforma from './plataforma/EntradaPlataforma'
+import { PLATAFORMA } from './plataforma/modo'
 import InicioProfessor from './pages/professor/InicioProfessor'
 import AvaliacaoDetalhe from './pages/solar/AvaliacaoDetalhe'
 import Avaliacoes from './pages/solar/Avaliacoes'
@@ -40,9 +42,10 @@ export default function App() {
     <HashRouter>
       <RolarParaTopo />
       <Routes>
-        <Route path="/" element={<Entrada />} />
-        <Route path="/entrar/:token" element={<EntrarPorLink />} />
-        <Route path="/emails" element={<Emails />} />
+        <Route path="/" element={PLATAFORMA ? <EntradaPlataforma /> : <Entrada />} />
+        {/* O link de acesso e os e-mails simulados são só da demonstração; na plataforma, o login comum. */}
+        {!PLATAFORMA && <Route path="/entrar/:token" element={<EntrarPorLink />} />}
+        {!PLATAFORMA && <Route path="/emails" element={<Emails />} />}
         <Route path="/professor" element={<Area papel="professor" />}>
           <Route index element={<InicioProfessor />} />
           {rotasDeTurma}

@@ -4138,3 +4138,33 @@ html.letra-maior .janela {
     margin-left: 0;
   }
 }
+
+/* Plataforma: avisos das gravações no banco, o logo com link e o lançamento sem internet */
+
+.avisos-gravacao {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(460px, calc(100vw - 32px));
+}
+.avisos-gravacao .aviso {
+  margin: 0;
+  box-shadow: var(--shadow-md);
+}
+.avisos-gravacao .aviso-acoes .btn {
+  padding: 4px 8px;
+}
+.marca-link {
+  display: block;
+  border-radius: var(--radius-sm);
+}
+.indicador-sem-rede {
+  color: var(--solar-maroon-900);
+  font-weight: 600;
+}
+.entrada-hero-conteudo .selo {
+  margin-top: 4px;
+}

@@ -27,6 +27,7 @@ import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, type Caderno, type Disciplina, type Letra, type Questao, type Serie } from '../../types'
 import { FormularioAvaliacao, pendenciasDoCaderno } from './Avaliacoes'
+import { PLATAFORMA } from '../../plataforma/modo'
 
 const LIMITE_PDF_MB = 50
 
@@ -243,8 +244,8 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
     try {
       await enviarPdf(caderno.id, arquivo)
       setMensagem({ erro: false, texto: `PDF “${arquivo.name}” guardado. A coordenação de cada colégio já pode baixar e imprimir.` })
-    } catch {
-      setMensagem({ erro: true, texto: 'Não foi possível guardar o PDF neste navegador. Tente de novo.' })
+    } catch (e) {
+      setMensagem({ erro: true, texto: PLATAFORMA && e instanceof Error ? e.message : 'Não foi possível guardar o PDF neste navegador. Tente de novo.' })
     } finally {
       setEnviando(false)
     }
@@ -253,8 +254,11 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
   async function baixar() {
     try {
       await baixarPdfDoCaderno(caderno)
-    } catch {
-      setMensagem({ erro: true, texto: 'O PDF desta prova foi enviado em outro navegador. Nesta versão de teste, cada navegador guarda os próprios arquivos.' })
+    } catch (e) {
+      setMensagem({
+        erro: true,
+        texto: PLATAFORMA && e instanceof Error ? e.message : 'O PDF desta prova foi enviado em outro navegador. Nesta versão de teste, cada navegador guarda os próprios arquivos.',
+      })
     }
   }
 

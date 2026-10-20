@@ -1,14 +1,17 @@
-import { ALargeSmall, LifeBuoy, Repeat } from 'lucide-react'
+import { ALargeSmall, LifeBuoy, LogOut, Repeat, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import logoSolar from '../assets/marca/logo-solar.png'
 import { avisosPendentes, pessoaDoPerfil, turmasDoProfessor, type Pessoa } from '../lib/consultas'
 import { turmaNome } from '../lib/formato'
+import { dispensarAviso, usePlataforma } from '../plataforma/estado'
+import { chave, PLATAFORMA } from '../plataforma/modo'
+import { servidor } from '../plataforma/ponte'
 import { useDb } from '../store/db'
-import { usePerfil } from '../store/perfil'
+import { definirPerfil, usePerfil } from '../store/perfil'
 import type { Db, Perfil } from '../types'
 import { AjudaConteudo } from './Ajuda'
-import { Janela } from './ui'
+import { Aviso, Janela } from './ui'
 
 type Papel = Perfil['papel']
 
@@ -73,17 +76,53 @@ function abasDo(db: Db, perfil: Perfil): Aba[] {
 }
 
 export function Marca() {
+  const { ambiente } = usePlataforma()
+  const logo = <img src={logoSolar} alt="Solar Colégios" className="marca-logo" />
   return (
     <div className="marca">
-      <img src={logoSolar} alt="Solar Colégios" className="marca-logo" />
+      {/* Na plataforma, o logo leva à página inicial da Plataforma Solar. */}
+      {PLATAFORMA ? (
+        <a href="/" className="marca-link" title="Página inicial da Plataforma Solar">
+          {logo}
+        </a>
+      ) : (
+        logo
+      )}
       <span className="marca-divisor" aria-hidden />
       <span className="marca-nome">Prova Solar</span>
-      <span className="selo selo-ambar">Versão de teste</span>
+      {PLATAFORMA ? (
+        ambiente !== 'producao' && <span className="selo selo-ambar">Ambiente de teste</span>
+      ) : (
+        <span className="selo selo-ambar">Versão de teste</span>
+      )}
     </div>
   )
 }
 
-const CHAVE_LETRA = 'prova-solar:letra-maior'
+/** Os avisos das gravações no banco (plataforma): erros ficam até fechar; os outros somem sozinhos. */
+function AvisosGravacao() {
+  const { avisos } = usePlataforma()
+  if (!avisos.length) return null
+  return (
+    <div className="avisos-gravacao" aria-live="polite">
+      {avisos.map((a) => (
+        <Aviso
+          key={a.id}
+          tom={a.tom}
+          acoes={
+            <button className="btn btn-pequeno btn-fantasma" onClick={() => dispensarAviso(a.id)} aria-label="Fechar o aviso">
+              <X size={15} aria-hidden />
+            </button>
+          }
+        >
+          {a.texto}
+        </Aviso>
+      ))}
+    </div>
+  )
+}
+
+const CHAVE_LETRA = chave('letra-maior')
 
 function lerLetraMaior() {
   try {
@@ -120,6 +159,7 @@ export function Area({ papel }: { papel: Papel }) {
   const navigate = useNavigate()
   const [ajudaAberta, setAjudaAberta] = useState(false)
   const [letraMaior, setLetraMaior] = useLetraMaior()
+  const { perfis } = usePlataforma()
   const pessoa = perfil && perfil.papel === papel ? pessoaDoPerfil(db, perfil) : null
   if (!perfil || !pessoa) return <Navigate to="/" replace />
   const quem = descreverPessoa(db, pessoa)
@@ -157,9 +197,29 @@ export function Area({ papel }: { papel: Papel }) {
               >
                 <ALargeSmall size={17} aria-hidden /> <span className="rotulo-botao">Letra maior</span>
               </button>
-              <button className="btn btn-pequeno btn-fantasma" onClick={() => navigate('/')} aria-label="Trocar perfil">
-                <Repeat size={15} aria-hidden /> <span className="rotulo-botao">Trocar perfil</span>
-              </button>
+              {PLATAFORMA ? (
+                <>
+                  {perfis.length > 1 && (
+                    <button
+                      className="btn btn-pequeno btn-fantasma"
+                      onClick={() => {
+                        definirPerfil(null)
+                        navigate('/')
+                      }}
+                      aria-label="Trocar de papel"
+                    >
+                      <Repeat size={15} aria-hidden /> <span className="rotulo-botao">Trocar de papel</span>
+                    </button>
+                  )}
+                  <button className="btn btn-pequeno btn-fantasma" onClick={() => void servidor()?.sair()} aria-label="Sair">
+                    <LogOut size={15} aria-hidden /> <span className="rotulo-botao">Sair</span>
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-pequeno btn-fantasma" onClick={() => navigate('/')} aria-label="Trocar perfil">
+                  <Repeat size={15} aria-hidden /> <span className="rotulo-botao">Trocar perfil</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -167,6 +227,7 @@ export function Area({ papel }: { papel: Papel }) {
       <main className="conteudo">
         <Outlet />
       </main>
+      {PLATAFORMA && <AvisosGravacao />}
       <Janela titulo="Precisa de ajuda?" aberta={ajudaAberta} aoFechar={() => setAjudaAberta(false)} larga>
         <AjudaConteudo db={db} perfil={perfil} />
       </Janela>

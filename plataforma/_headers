@@ -1,13 +1,14 @@
 # Cabeçalhos da Prova Solar em plataformasolar.org.br/prova/ (PLANO.md da plataforma, §3 e §11).
 # O build:plataforma copia este arquivo para a raiz de dist-plataforma/, que é o que o Worker publica.
-# CSP só em Report-Only até a PdC 4 (etapa 3): por enquanto /prova/ serve a demonstração, que
-# ainda guarda PDFs no navegador e abre e-mails simulados.
+# CSP efetiva desde a etapa 5. connect-src: os dois projetos do Supabase, solar-prod (rsazegmzlkvqhsrmyfuj)
+# e solar-teste (azhguphtsspnulvejtfu); o módulo de sessão escolhe um pelo endereço. O PDF da prova sai por
+# uma URL assinada do Storage, aberta como download (navegação, que a CSP não restringe).
 # Cache-Control com no-transform em tudo: com ele a Cloudflare não mexe nas respostas (não injeta o
 # beacon do Web Analytics, não ofusca e-mails, não põe Rocket Loader). Regra que muda o Cache-Control
-# zera a geral com "! Cache-Control" antes de definir a sua.
+# zera a geral com "! Cache-Control" antes de definir a sua, e mantém o no-transform.
 /*
   Cache-Control: public, max-age=0, must-revalidate, no-transform
-  Content-Security-Policy-Report-Only: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self' blob:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://rsazegmzlkvqhsrmyfuj.supabase.co https://azhguphtsspnulvejtfu.supabase.co; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Cross-Origin-Opener-Policy: same-origin

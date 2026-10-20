@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from 'react'
+import { chave } from '../plataforma/modo'
 import type { Perfil } from '../types'
 
 // O perfil fica no sessionStorage: cada aba pode estar num papel diferente
 // (ex.: professor numa aba e Solar na outra) e fechar a aba volta à pergunta inicial.
-const CHAVE = 'prova-solar:perfil'
+const CHAVE = chave('perfil')
 const ouvintes = new Set<() => void>()
 let perfil: Perfil | null = ler()
 

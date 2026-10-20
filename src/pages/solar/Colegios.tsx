@@ -9,6 +9,7 @@ import { useDb } from '../../store/db'
 import { useRede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import type { Contato } from '../../types'
+import { PLATAFORMA } from '../../plataforma/modo'
 
 export const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ')
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -140,7 +141,11 @@ export function FormularioColegio(props: {
       {props.comResponsavel && (
         <>
           <h3 className="subtitulo">Responsável pela coordenação (pode ficar para depois)</h3>
-          <p className="campo-ajuda">A pessoa recebe por e-mail o link de acesso, que entra direto na conta dela. Na Solar, o colégio fica aos cuidados de quem o cadastra.</p>
+          <p className="campo-ajuda">
+            {PLATAFORMA
+              ? 'A pessoa recebe por e-mail um convite; ela entra com o e-mail e um código de 4 dígitos. Na Solar, o colégio fica aos cuidados de quem o cadastra.'
+              : 'A pessoa recebe por e-mail o link de acesso, que entra direto na conta dela. Na Solar, o colégio fica aos cuidados de quem o cadastra.'}
+          </p>
           <div className="form-grade">
             <label className="campo">
               <span>Nome</span>

@@ -1,3 +1,4 @@
+import { servidor } from '../plataforma/ponte'
 import type { Caderno, Id } from '../types'
 
 // Os PDFs enviados ficam no IndexedDB do navegador (o localStorage não comporta arquivos).
@@ -49,10 +50,18 @@ export function baixarUrl(url: string, nomeArquivo: string) {
   link.remove()
 }
 
-/** Baixa o PDF da prova. Lança erro se o arquivo enviado não estiver neste navegador. */
+/**
+ * Baixa o PDF da prova. Na plataforma, por uma URL assinada do Storage que vale um minuto; na demonstração, do
+ * IndexedDB deste navegador (lança erro se o arquivo enviado não estiver aqui).
+ */
 export async function baixarPdfDoCaderno(caderno: Caderno) {
   const pdf = caderno.pdf
   if (!pdf) return
+  const banco = servidor()
+  if (banco) {
+    baixarUrl(await banco.urlDoPdf(caderno.id, pdf.nome), pdf.nome)
+    return
+  }
   if (pdf.origem === 'exemplo' && pdf.url) {
     baixarUrl(import.meta.env.BASE_URL + pdf.url, pdf.nome)
     return

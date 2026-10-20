@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { Cabecalho, Cartao, Confirmacao, LegendaFaixas } from '../../components/ui'
 import { restaurarDadosDeExemplo } from '../../store/acoes'
 import { useDb } from '../../store/db'
+import { PLATAFORMA } from '../../plataforma/modo'
 
 export default function Configuracoes() {
   const db = useDb()
@@ -27,6 +28,7 @@ export default function Configuracoes() {
         <LegendaFaixas />
       </Cartao>
 
+      {!PLATAFORMA && (
       <Cartao titulo="Dados desta versão de teste">
         <p>
           Nesta versão não há servidor: os dados ficam guardados neste navegador. Cada pessoa que abre o site começa com os mesmos dados fictícios, e o que
@@ -45,6 +47,7 @@ export default function Configuracoes() {
           </p>
         )}
       </Cartao>
+      )}
 
       <Confirmacao
         titulo="Voltar aos dados de exemplo?"

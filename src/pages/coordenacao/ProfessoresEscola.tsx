@@ -8,6 +8,7 @@ import { criarProfessor, definirProfessoresDaTurma, desativarProfessor, editarPr
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
 import { SERIES, type Id, type Professor } from '../../types'
+import { PLATAFORMA } from '../../plataforma/modo'
 
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -236,7 +237,7 @@ function FormularioProfessor(props: {
     e.preventDefault()
     const limpo = { nome: nome.trim().replace(/\s+/g, ' '), email: email.trim().toLowerCase() }
     if (!limpo.nome) return setErro('Informe o nome do professor.')
-    if (!limpo.email) return setErro('Informe o e-mail: é para ele que vai o link de acesso ao site.')
+    if (!limpo.email) return setErro(PLATAFORMA ? 'Informe o e-mail: é com ele que o professor entra no site.' : 'Informe o e-mail: é para ele que vai o link de acesso ao site.')
     if (!EMAIL_VALIDO.test(limpo.email)) return setErro('Esse e-mail não parece válido. Confira.')
     props.aoSalvar(limpo)
   }
@@ -270,9 +271,19 @@ function FormularioProfessor(props: {
         </label>
       </div>
       {props.inicial && email.trim().toLowerCase() !== props.inicial.email && EMAIL_VALIDO.test(email.trim()) && (
-        <p className="campo-ajuda">Ao salvar, o novo e-mail recebe um link de acesso, e o link enviado antes deixa de valer.</p>
+        <p className="campo-ajuda">
+          {PLATAFORMA
+            ? 'Ao salvar, o novo e-mail recebe um convite, e as sessões abertas com o e-mail antigo acabam.'
+            : 'Ao salvar, o novo e-mail recebe um link de acesso, e o link enviado antes deixa de valer.'}
+        </p>
       )}
-      {!props.inicial && <p className="campo-ajuda">Ao cadastrar, o professor recebe neste e-mail o link de acesso ao site.</p>}
+      {!props.inicial && (
+        <p className="campo-ajuda">
+          {PLATAFORMA
+            ? 'Ao cadastrar, o professor recebe neste e-mail um convite. Para entrar, ele digita o e-mail e recebe um código de 4 dígitos.'
+            : 'Ao cadastrar, o professor recebe neste e-mail o link de acesso ao site.'}
+        </p>
+      )}
       {erro && <p className="erro-campo">{erro}</p>}
       <div className="form-acoes">
         <button type="submit" className="btn btn-primario">

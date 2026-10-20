@@ -2,6 +2,7 @@ import { Mail, Phone, Printer } from 'lucide-react'
 import { Link } from 'react-router'
 import { contatoDoColegio, membroSolarDoColegio, responsavelSolar } from '../lib/consultas'
 import type { Contato, Db, Perfil } from '../types'
+import { PLATAFORMA } from '../plataforma/modo'
 
 type Papel = Perfil['papel']
 
@@ -36,7 +37,9 @@ export const PASSOS: Record<Papel, { titulo: string; texto: string }[]> = {
     { titulo: 'Confira os gabaritos', texto: 'Uma segunda pessoa confere o gabarito com a prova impressa e marca “Gabarito conferido”.' },
     {
       titulo: 'Cuide dos seus colégios',
-      texto: 'Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa define quem responde pela coordenação, que recebe o link de acesso por e-mail.',
+      texto: PLATAFORMA
+        ? 'Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa define quem responde pela coordenação, que recebe um convite por e-mail.'
+        : 'Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa define quem responde pela coordenação, que recebe o link de acesso por e-mail.',
     },
     { titulo: 'Acompanhe o lançamento', texto: 'No Início, veja o que falta e os alertas de gabarito.' },
     { titulo: 'Leia os resultados', texto: 'Em “Resultados”, veja o panorama da rede, por colégio e por turma, e as questões com menos acertos.' },
@@ -55,7 +58,13 @@ export const PALAVRAS: { termo: string; definicao: string }[] = [
   { termo: 'Faixa de acerto', definicao: 'Os gráficos agrupam os alunos de 20 em 20 pontos: menos de 20%, de 20% a 39%, e assim por diante, até 80% ou mais.' },
   { termo: 'Habilidade da BNCC', definicao: 'O que a questão avalia, segundo a Base Nacional Comum Curricular.' },
   { termo: 'Aluno novo', definicao: 'Quem entrou no colégio no mesmo ano da avaliação.' },
-  { termo: 'Link de acesso', definicao: 'O endereço que chega por e-mail e entra direto na sua conta, sem senha. Não expira: guarde o e-mail e não o encaminhe.' },
+  PLATAFORMA
+    ? {
+        termo: 'Código de acesso',
+        definicao:
+          'Para entrar, você digita o seu e-mail e recebe um código de 4 dígitos, que vale por 15 minutos e uma vez só. Não há senha. Quem cadastra você manda um convite por e-mail.',
+      }
+    : { termo: 'Link de acesso', definicao: 'O endereço que chega por e-mail e entra direto na sua conta, sem senha. Não expira: guarde o e-mail e não o encaminhe.' },
 ]
 
 function CartaoContato({ titulo, contato, papel }: { titulo: string; contato: Contato | null; papel: string }) {

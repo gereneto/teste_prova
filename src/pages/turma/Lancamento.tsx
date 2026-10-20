@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Check, Circle, CircleDashed, CloudCheck, FileText, LoaderCircle, Pencil, TriangleAlert, UserX } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Circle, CircleDashed, CloudCheck, CloudOff, FileText, LoaderCircle, Pencil, TriangleAlert, UserX } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Aviso, Explicacao, Progresso, Selo, Vazio } from '../../components/ui'
@@ -6,6 +6,8 @@ import { corrigir, ehNovo, marcaEm, progressoDaTurma, questaoValida, respostaCom
 import { dataLonga, plural } from '../../lib/formato'
 import { alunoEmTexto, identificacao } from '../../lib/iniciais'
 import { concluirLancamento, definirSituacao, marcarQuestao } from '../../store/acoes'
+import { usePlataforma } from '../../plataforma/estado'
+import { PLATAFORMA } from '../../plataforma/modo'
 import { useSalvando } from '../../store/db'
 import { BRANCO, LETRAS, RASURA, VAZIO, type Aluno, type Caderno, type Id, type RespostaAluno, type Situacao } from '../../types'
 import { CabecalhoTurma } from './CabecalhoTurma'
@@ -515,6 +517,16 @@ function ItemAluno(props: { aluno: Aluno; caderno: Caderno; resposta: RespostaAl
 
 function IndicadorSalvo() {
   const salvando = useSalvando()
+  const { fila } = usePlataforma()
+  // Na plataforma, cada aluno fica guardado neste aparelho até o banco confirmar (a fila do lançamento).
+  if (PLATAFORMA && fila.semRede && fila.pendentes) {
+    return (
+      <span className="indicador-salvo indicador-sem-rede" aria-live="polite">
+        <CloudOff size={15} aria-hidden /> Sem internet: {plural(fila.pendentes, 'aluno guardado', 'alunos guardados')} neste aparelho. Vão para o servidor
+        quando a internet voltar.
+      </span>
+    )
+  }
   return (
     <span className="indicador-salvo" aria-live="polite">
       {salvando ? (
@@ -523,7 +535,7 @@ function IndicadorSalvo() {
         </>
       ) : (
         <>
-          <CloudCheck size={15} aria-hidden /> Tudo salvo neste navegador
+          <CloudCheck size={15} aria-hidden /> {PLATAFORMA ? 'Tudo salvo' : 'Tudo salvo neste navegador'}
         </>
       )}
     </span>
