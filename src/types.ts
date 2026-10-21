@@ -6,12 +6,18 @@ export const SERIES: Serie[] = [1, 2, 3, 4, 5]
 export type Turno = 'Manhã' | 'Tarde' | 'Integral'
 export const TURNOS: Turno[] = ['Manhã', 'Tarde', 'Integral']
 
-export const LETRAS = ['A', 'B', 'C', 'D', 'E'] as const
+/** Toda questão tem estas 4 alternativas (2026-10-21: nada de quinta alternativa). */
+export const LETRAS = ['A', 'B', 'C', 'D'] as const
 export type Letra = (typeof LETRAS)[number]
 
-/** A prova da Solar tem só estas duas disciplinas, cada uma num caderno próprio (decisão de 2026-10-19). */
+/**
+ * Cada disciplina tem um caderno próprio (decisão de 2026-10-19). Por enquanto a prova é só de Português
+ * (2026-10-21): com uma disciplina só, as telas não mostram a escolha da prova nem a comparação entre disciplinas.
+ * O banco aceita as duas, e a carga deixa de fora os cadernos de disciplinas que não estão aqui.
+ */
 export type Disciplina = 'Português' | 'Matemática'
-export const DISCIPLINAS_DA_PROVA: Disciplina[] = ['Português', 'Matemática']
+export const DISCIPLINAS_DA_PROVA: Disciplina[] = ['Português']
+export const VARIAS_DISCIPLINAS = DISCIPLINAS_DA_PROVA.length > 1
 
 // Cada questão lançada vira um caractere na string `marcas` da resposta do aluno:
 // uma letra, em branco, rasurada (mais de uma marcada) ou ainda não lançada.
@@ -95,7 +101,7 @@ export interface Aluno {
   saida?: { em: string; motivo: MotivoSaida }
 }
 
-/** A avaliação anual: para cada ano do Fundamental I, uma prova de Português e outra de Matemática. */
+/** A avaliação anual: para cada ano do Fundamental I, uma prova de cada disciplina (por enquanto, só Português). */
 export interface Avaliacao {
   id: Id
   titulo: string
@@ -127,14 +133,13 @@ export interface PdfCaderno {
 
 /**
  * A prova de um ano e uma disciplina dentro de uma avaliação. No código continua "caderno"; nas telas é
- * "a prova de Matemática do 3º ano". Todas as questões são da disciplina do caderno.
+ * "a prova de Português do 3º ano". Todas as questões são da disciplina do caderno e têm as 4 alternativas de LETRAS.
  */
 export interface Caderno {
   id: Id
   avaliacaoId: Id
   serie: Serie
   disciplina: Disciplina
-  numAlternativas: 4 | 5
   /** Só o 5º ano marca numa folha de respostas separada; os demais marcam na própria prova. */
   usaFolhaRespostas: boolean
   questoes: Questao[]

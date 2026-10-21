@@ -2,7 +2,7 @@ import type { Serie, Turma } from '../types'
 
 export const serieNome = (serie: Serie) => `${serie}º ano`
 
-/** "Matemática do 3º ano" (no meio da frase: "a prova de Matemática do 3º ano"). */
+/** "Português do 3º ano" (no meio da frase: "a prova de Português do 3º ano"). */
 export const provaNome = (caderno: { serie: Serie; disciplina: string }) => `${caderno.disciplina} do ${serieNome(caderno.serie)}`
 
 export const turmaNome = (turma: Pick<Turma, 'serie' | 'nome'>) => `${turma.serie}º ano ${turma.nome}`

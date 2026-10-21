@@ -9,7 +9,6 @@ import {
   adicionarCaderno,
   aplicarGabarito,
   conferirGabarito,
-  definirAlternativas,
   definirFolhaRespostas,
   definirNumeroDeQuestoes,
   editarAvaliacao,
@@ -25,7 +24,7 @@ import { baixarPdfDoCaderno } from '../../store/arquivos'
 import { useDb } from '../../store/db'
 import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, type Caderno, type Disciplina, type Letra, type Questao, type Serie } from '../../types'
+import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, VARIAS_DISCIPLINAS, type Caderno, type Disciplina, type Letra, type Questao, type Serie } from '../../types'
 import { FormularioAvaliacao, pendenciasDoCaderno } from './Avaliacoes'
 import { PLATAFORMA } from '../../plataforma/modo'
 
@@ -105,24 +104,26 @@ export default function AvaliacaoDetalhe() {
           )
         })}
       </div>
-      <div className="segmentos segmentos-grandes" role="tablist" aria-label="Disciplina">
-        {DISCIPLINAS_DA_PROVA.map((d) => {
-          const c = cadernos.find((x) => x.serie === serie && x.disciplina === d)
-          const pendencias = c ? pendenciasDoCaderno(c) : []
-          return (
-            <button
-              key={d}
-              role="tab"
-              aria-selected={d === disciplina}
-              className={`segmento ${d === disciplina ? 'ativo' : ''}`}
-              onClick={() => setParams({ serie: String(serie), disciplina: d }, { replace: true })}
-            >
-              {d}
-              {pendencias.length > 0 && <span className="ponto-pendente" aria-label={pendencias.join(', ')} />}
-            </button>
-          )
-        })}
-      </div>
+      {VARIAS_DISCIPLINAS && (
+        <div className="segmentos segmentos-grandes" role="tablist" aria-label="Disciplina">
+          {DISCIPLINAS_DA_PROVA.map((d) => {
+            const c = cadernos.find((x) => x.serie === serie && x.disciplina === d)
+            const pendencias = c ? pendenciasDoCaderno(c) : []
+            return (
+              <button
+                key={d}
+                role="tab"
+                aria-selected={d === disciplina}
+                className={`segmento ${d === disciplina ? 'ativo' : ''}`}
+                onClick={() => setParams({ serie: String(serie), disciplina: d }, { replace: true })}
+              >
+                {d}
+                {pendencias.length > 0 && <span className="ponto-pendente" aria-label={pendencias.join(', ')} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {caderno ? (
         <EditorCaderno key={caderno.id} rede={rede} caderno={caderno} editavel={editarRede} />
@@ -175,7 +176,7 @@ export default function AvaliacaoDetalhe() {
         aoFechar={() => setExcluindo(false)}
       >
         <p>
-          Saem do site as provas de Português e de Matemática de todos os anos{comRespostas ? ' e todas as respostas já lançadas pelos professores. Os resultados desta avaliação deixam de existir' : ''}.
+          Saem do site as provas de todos os anos{comRespostas ? ' e todas as respostas já lançadas pelos professores. Os resultados desta avaliação deixam de existir' : ''}.
           Não dá para desfazer.
         </p>
       </Confirmacao>
@@ -196,12 +197,13 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
   const [gabaritoTexto, setGabaritoTexto] = useState('')
   const [mensagem, setMensagem] = useState<{ texto: string; erro: boolean } | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [baixando, setBaixando] = useState(false)
   const [mudanca, setMudanca] = useState<MudancaPendente | null>(null)
   const [motivo, setMotivo] = useState('')
   const [reduzindo, setReduzindo] = useState<number | null>(null)
   const [excluindo, setExcluindo] = useState(false)
   const [comentando, setComentando] = useState<number | null>(null)
-  const letras: readonly string[] = LETRAS.slice(0, caderno.numAlternativas)
+  const letras: readonly string[] = LETRAS
   const total = caderno.questoes.length
   const comRespostas = turmasComRespostas(rede, caderno)
   const semGabarito = caderno.questoes.some((q) => !q.anulada && !q.gabarito)
@@ -252,6 +254,7 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
   }
 
   async function baixar() {
+    setBaixando(true)
     try {
       await baixarPdfDoCaderno(caderno)
     } catch (e) {
@@ -259,6 +262,8 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
         erro: true,
         texto: PLATAFORMA && e instanceof Error ? e.message : 'O PDF desta prova foi enviado em outro navegador. Nesta versão de teste, cada navegador guarda os próprios arquivos.',
       })
+    } finally {
+      setBaixando(false)
     }
   }
 
@@ -269,8 +274,8 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
       acoes={
         <>
           {caderno.pdf && (
-            <button className="btn btn-pequeno" onClick={baixar}>
-              <Download size={15} aria-hidden /> Baixar a prova
+            <button className="btn btn-pequeno" onClick={baixar} disabled={baixando}>
+              <Download size={15} aria-hidden /> {baixando ? 'Baixando…' : 'Baixar a prova'}
             </button>
           )}
           {editavel && (
@@ -355,16 +360,7 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
                 Aplicar
               </button>
             </div>
-            <div className="campo-inline">
-              <span>Alternativas</span>
-              <div className="segmentos" role="group" aria-label="Número de alternativas">
-                {([4, 5] as const).map((n) => (
-                  <button type="button" key={n} className={`segmento ${caderno.numAlternativas === n ? 'ativo' : ''}`} onClick={() => definirAlternativas(caderno.id, n)}>
-                    {n} ({LETRAS.slice(0, n).join('')})
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="campo-ajuda">Cada questão tem 4 alternativas, de A a D.</p>
             {caderno.serie === 5 ? (
               <label className="checkbox">
                 <input type="checkbox" checked={caderno.usaFolhaRespostas} onChange={(e) => definirFolhaRespostas(caderno.id, e.target.checked)} />
@@ -539,7 +535,7 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
 
 /** O que cada alternativa errada costuma indicar e como retomar: aparece para o professor nos resultados da turma. */
 function ComentariosQuestao({ caderno, indice, questao, editavel }: { caderno: Caderno; indice: number; questao: Questao; editavel: boolean }) {
-  const letras = LETRAS.slice(0, caderno.numAlternativas).filter((l) => l !== questao.gabarito)
+  const letras = LETRAS.filter((l) => l !== questao.gabarito)
   const [textos, setTextos] = useState<Partial<Record<Letra, string>>>(questao.comentarios ?? {})
   const [retomar, setRetomar] = useState(questao.comoRetomar ?? '')
   return (

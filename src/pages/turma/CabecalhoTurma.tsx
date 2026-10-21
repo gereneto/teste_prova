@@ -11,7 +11,7 @@ export type AbaTurma = 'lancar' | 'resultados' | 'alunos'
 /**
  * Cabeçalho de todas as páginas de uma turma, com as mesmas abas para professor e coordenação:
  * Lançar respostas, Resultados e Alunos. A Solar vê só os resultados. Imprimir as provas é só na aba Provas da coordenação.
- * Em Lançar e Resultados, a turma escolhe a prova: Português ou Matemática (uma prova por disciplina).
+ * Em Lançar e Resultados, com mais de uma disciplina, a turma escolhe a prova (uma prova por disciplina).
  */
 export function CabecalhoTurma(props: {
   db: Db
@@ -40,13 +40,15 @@ export function CabecalhoTurma(props: {
   if (atual) abas.push({ id: 'resultados', rotulo: 'Resultados', para: `${base}/resultados/${atual.id}/${turma.id}`, Icone: ChartColumn })
   abas.push({ id: 'alunos', rotulo: 'Alunos', para: `${base}/turma/${turma.id}/alunos`, Icone: Users })
 
+  const disciplinas = props.caderno && prova && prova.cadernos.length > 1 && aba !== 'alunos' ? prova.cadernos : []
+  // Sem a escolha da prova (uma disciplina só), o nome dela fica na linha de baixo.
   const detalhes = [
+    props.caderno && aba !== 'alunos' && !disciplinas.length ? `Prova de ${props.caderno.disciplina}` : null,
     colegio.nome,
     anterior ? `ano letivo ${turma.anoLetivo}` : turma.turno,
     perfil.papel === 'professor' ? null : nomesProfessores(db, turma),
     anterior ? null : plural(alunos, 'aluno', 'alunos'),
   ].filter(Boolean)
-  const disciplinas = props.caderno && prova && prova.cadernos.length > 1 && aba !== 'alunos' ? prova.cadernos : []
 
   return (
     <>

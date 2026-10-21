@@ -17,7 +17,8 @@ export interface Servidor {
   enviarRespostas(): Promise<number>
   enviarPdf(cadernoId: Id, arquivo: File): Promise<void>
   removerPdf(cadernoIds: Id[]): void
-  urlDoPdf(cadernoId: Id, nome: string): Promise<string>
+  /** Uma URL assinada (vale um minuto) para buscar o PDF da prova. */
+  urlDoPdf(cadernoId: Id): Promise<string>
   /** Sai deste navegador (todos os apps da plataforma). */
   sair(): Promise<void>
 }

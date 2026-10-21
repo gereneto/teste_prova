@@ -8,7 +8,16 @@ import { provaNome, turmaNome } from '../../lib/formato'
 import { LETRAS, type Aluno, type Avaliacao, type Caderno, type Colegio, type Turma } from '../../types'
 import { useContextoTurma } from '../turma/contexto'
 
-const QUESTOES_POR_COLUNA = 10
+/**
+ * Como as questões se dividem na folha A4, pelo total: colunas do mesmo tamanho (27 questões: 14 e 13) e bolinhas
+ * menores quando a coluna fica comprida, para tudo caber numa página. A prova vai até 60 questões.
+ */
+function arranjoDaFolha(total: number): { colunas: number; porColuna: number; tamanho: 'grande' | 'media' | 'pequena' | 'mini' } {
+  const colunas = total <= 10 ? 1 : total <= 34 ? 2 : 3
+  const porColuna = Math.ceil(total / colunas)
+  const tamanho = colunas === 3 ? 'mini' : porColuna <= 10 ? 'grande' : porColuna <= 14 ? 'media' : 'pequena'
+  return { colunas, porColuna, tamanho }
+}
 
 /** Folhas de respostas de uma turma do 5º ano, com o número e as iniciais de cada aluno. Só a coordenação imprime. */
 export default function FolhasResposta() {
@@ -58,10 +67,10 @@ export default function FolhasResposta() {
 }
 
 function Folha({ aluno, caderno, avaliacao, turma, colegio }: { aluno: Aluno | null; caderno: Caderno; avaliacao: Avaliacao; turma: Turma; colegio: Colegio }) {
-  const letras = LETRAS.slice(0, caderno.numAlternativas)
+  const { porColuna, tamanho } = arranjoDaFolha(caderno.questoes.length)
   const colunas: number[][] = []
   caderno.questoes.forEach((_, i) => {
-    if (i % QUESTOES_POR_COLUNA === 0) colunas.push([])
+    if (i % porColuna === 0) colunas.push([])
     colunas[colunas.length - 1].push(i)
   })
 
@@ -101,13 +110,13 @@ function Folha({ aluno, caderno, avaliacao, turma, colegio }: { aluno: Aluno | n
         cada questão.
       </p>
 
-      <div className="folha-questoes">
+      <div className={`folha-questoes folha-${tamanho}`}>
         {colunas.map((indices, c) => (
           <div className="folha-coluna" key={c}>
             {indices.map((i) => (
               <div className="folha-linha" key={i}>
                 <span className="folha-num">{i + 1}</span>
-                {letras.map((letra) => (
+                {LETRAS.map((letra) => (
                   <span className="folha-bolha" key={letra}>
                     {letra}
                   </span>

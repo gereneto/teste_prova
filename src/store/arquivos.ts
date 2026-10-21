@@ -1,3 +1,4 @@
+import { comTitulo, nomeDoPdf, tituloDaProva } from '../lib/pdf'
 import { servidor } from '../plataforma/ponte'
 import type { Caderno, Id } from '../types'
 
@@ -50,23 +51,26 @@ export function baixarUrl(url: string, nomeArquivo: string) {
   link.remove()
 }
 
+async function buscar(url: string): Promise<Blob> {
+  const resposta = await fetch(url).catch(() => null)
+  if (!resposta?.ok) throw new Error('Não foi possível baixar a prova agora. Confira a internet e tente de novo.')
+  return resposta.blob()
+}
+
 /**
- * Baixa o PDF da prova. Na plataforma, por uma URL assinada do Storage que vale um minuto; na demonstração, do
+ * Baixa o PDF da prova, com o título certo dentro do arquivo e o nome "Prova Solar de Lingua Portuguesa 1o ano.pdf"
+ * (lib/pdf.ts). Na plataforma, o arquivo vem por uma URL assinada do Storage que vale um minuto; na demonstração, do
  * IndexedDB deste navegador (lança erro se o arquivo enviado não estiver aqui).
  */
 export async function baixarPdfDoCaderno(caderno: Caderno) {
   const pdf = caderno.pdf
   if (!pdf) return
   const banco = servidor()
-  if (banco) {
-    baixarUrl(await banco.urlDoPdf(caderno.id, pdf.nome), pdf.nome)
-    return
-  }
-  if (pdf.origem === 'exemplo' && pdf.url) {
-    baixarUrl(import.meta.env.BASE_URL + pdf.url, pdf.nome)
-    return
-  }
-  const blob = await lerPdf(caderno.id)
-  if (!blob) throw new Error('O PDF desta prova não está salvo neste navegador.')
-  baixarBlob(blob, pdf.nome)
+  let arquivo: Blob | undefined
+  if (banco) arquivo = await buscar(await banco.urlDoPdf(caderno.id))
+  else if (pdf.origem === 'exemplo' && pdf.url) arquivo = await buscar(import.meta.env.BASE_URL + pdf.url)
+  else arquivo = await lerPdf(caderno.id)
+  if (!arquivo) throw new Error('O PDF desta prova não está salvo neste navegador.')
+  const bytes = comTitulo(new Uint8Array(await arquivo.arrayBuffer()), tituloDaProva(caderno))
+  baixarBlob(new Blob([bytes], { type: 'application/pdf' }), nomeDoPdf(caderno))
 }

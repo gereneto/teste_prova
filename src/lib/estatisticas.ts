@@ -108,7 +108,7 @@ export type ResultadoAvaliado = ResultadoAluno & { correcao: Correcao }
 export interface FiltroResultados {
   avaliacaoId: Id
   serie?: Serie | null
-  /** Uma prova só (Português ou Matemática de um ano). */
+  /** Uma prova só (a de uma disciplina num ano). */
   cadernoId?: Id | null
   disciplina?: string | null
   colegioId?: Id | null
@@ -242,11 +242,11 @@ export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[])
       const marca = marcaEm(r.marcas, indice)
       contagem[marca] = (contagem[marca] ?? 0) + 1
     }
-    if (!questaoValida(questao) || n === 0) return analiseDaQuestao(caderno, questao, indice, n, contagem, 0, null)
+    if (!questaoValida(questao) || n === 0) return analiseDaQuestao(questao, indice, n, contagem, 0, null)
     const acertou: number[] = doCaderno.map((r) => (r.correcao.porQuestao[indice] === 'certa' ? 1 : 0))
     const resto = doCaderno.map((r, k) => r.correcao.acertos - acertou[k])
     const acertos = acertou.reduce((soma, v) => soma + v, 0)
-    return analiseDaQuestao(caderno, questao, indice, n, contagem, acertos, correlacao(acertou, resto))
+    return analiseDaQuestao(questao, indice, n, contagem, acertos, correlacao(acertou, resto))
   })
 }
 
@@ -255,7 +255,6 @@ export function analisarQuestoes(caderno: Caderno, resultados: ResultadoAluno[])
  * Solar recebe (rede.ts). n é o número de alunos avaliados; a discriminação já vem calculada.
  */
 export function analiseDaQuestao(
-  caderno: Pick<Caderno, 'numAlternativas'>,
   questao: Questao,
   indice: number,
   n: number,
@@ -269,12 +268,12 @@ export function analiseDaQuestao(
   const pctAcerto = (100 * acertos) / n
 
   let maisMarcada: { marca: string; qtd: number } | null = null
-  for (const letra of LETRAS.slice(0, caderno.numAlternativas)) {
+  for (const letra of LETRAS) {
     const qtd = contagem[letra] ?? 0
     if (letra !== questao.gabarito && qtd > 0 && (!maisMarcada || qtd > maisMarcada.qtd)) maisMarcada = { marca: letra, qtd }
   }
 
-  const erradas = LETRAS.slice(0, caderno.numAlternativas).filter((l) => l !== questao.gabarito)
+  const erradas = LETRAS.filter((l) => l !== questao.gabarito)
   const esquecidas = n >= MINIMO_PARA_ALERTAS ? erradas.filter((l) => (100 * (contagem[l] ?? 0)) / n < PCT_ALTERNATIVA_ESQUECIDA) : []
   const alertas: AlertaQuestao[] = []
   if (n >= MINIMO_PARA_ALERTAS) {

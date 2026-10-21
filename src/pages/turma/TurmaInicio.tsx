@@ -5,8 +5,8 @@ import { progressoDe } from '../../lib/estatisticas'
 import { useTurmaDaRota } from './contexto'
 
 /**
- * Abre a turma na aba que faz mais sentido agora: lançar durante o lançamento (a primeira prova, de
- * Português ou de Matemática, que ainda não foi concluída), resultados depois.
+ * Abre a turma na aba que faz mais sentido agora: lançar durante o lançamento (a primeira prova, na ordem das
+ * disciplinas, que ainda não foi concluída), resultados depois.
  */
 export default function TurmaInicio() {
   const contexto = useTurmaDaRota()

@@ -42,7 +42,7 @@ import {
 import { useDb } from '../../store/db'
 import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { BRANCO, DISCIPLINAS_DA_PROVA, LETRAS, RASURA, SERIES, type Caderno, type Colegio, type Db, type Disciplina, type Serie } from '../../types'
+import { BRANCO, DISCIPLINAS_DA_PROVA, LETRAS, RASURA, SERIES, VARIAS_DISCIPLINAS, type Caderno, type Colegio, type Db, type Disciplina, type Serie } from '../../types'
 import { SeletorDisciplina } from '../coordenacao/ResultadosColegio'
 
 const ALERTAS: Record<AlertaQuestao, { rotulo: string; texto: string; tom: Tom }> = {
@@ -67,7 +67,7 @@ const nomeCurto = (colegio: Colegio) => colegio.nome.replace(/^(Colégio|Escola)
 
 /**
  * Os resultados da rede para a Solar: somados por turma e prova (lib/rede.ts), nunca aluno a aluno. Os números são de
- * uma prova (Português ou Matemática); "Acerto por disciplina" compara as duas.
+ * uma prova (a de uma disciplina); com mais de uma disciplina, "Acerto por disciplina" compara as provas.
  */
 export default function ResultadosRede() {
   const db = useDb()
@@ -83,7 +83,7 @@ export default function ResultadosRede() {
   const serie: Serie | null = SERIES.find((s) => String(s) === params.get('serie')) ?? null
   const disciplina: Disciplina = DISCIPLINAS_DA_PROVA.find((d) => d === params.get('disciplina')) ?? DISCIPLINAS_DA_PROVA[0]
   const colegioId = db.colegios.find((c) => c.id === params.get('colegio'))?.id ?? null
-  // As duas provas (para comparar as disciplinas) e só a escolhida (para todo o resto).
+  // Todas as provas (para comparar as disciplinas) e só a escolhida (para todo o resto).
   const ambas = useMemo(
     () =>
       avaliacao
@@ -211,7 +211,7 @@ export default function ResultadosRede() {
 
   function exportarQuestoes() {
     if (!caderno) return
-    const letras = LETRAS.slice(0, caderno.numAlternativas)
+    const letras = LETRAS
     baixarCsv(
       `questoes-${nomeArquivo}.csv`,
       ['Nº', 'Disciplina', 'Habilidade', 'Gabarito', 'Anulada', 'Alunos', 'Acerto (%)', ...letras, 'Em branco', 'Rasurada', 'Erro mais comum', 'Discriminação', 'Alertas'],
@@ -234,6 +234,11 @@ export default function ResultadosRede() {
   }
 
   const emLancamento = ['aplicacao', 'lancamento'].includes(etapaAvaliacao(avaliacao))
+  const faixas = (
+    <Cartao titulo="Alunos por faixa de acerto" sub={escopo}>
+      <Histograma contagem={faixasAg(ags)} />
+    </Cartao>
+  )
 
   return (
     <>
@@ -315,14 +320,16 @@ export default function ResultadosRede() {
             <Kpi rotulo={`Turmas que concluíram o lançamento de ${disciplina}`} valor={`${concluidas} de ${turmas.length}`} />
           </div>
 
-          <div className="grade grade-2">
-            <Cartao titulo="Alunos por faixa de acerto" sub={escopo}>
-              <Histograma contagem={faixasAg(ags)} />
-            </Cartao>
-            <Cartao titulo="Acerto por disciplina" sub="As duas provas, lado a lado.">
-              <Barras itens={porDisciplina.map((d) => ({ chave: d.chave, rotulo: d.chave, valor: d.pct, detalhe: plural(d.questoes, 'questão', 'questões') }))} />
-            </Cartao>
-          </div>
+          {VARIAS_DISCIPLINAS ? (
+            <div className="grade grade-2">
+              {faixas}
+              <Cartao titulo="Acerto por disciplina" sub="As provas, lado a lado.">
+                <Barras itens={porDisciplina.map((d) => ({ chave: d.chave, rotulo: d.chave, valor: d.pct, detalhe: plural(d.questoes, 'questão', 'questões') }))} />
+              </Cartao>
+            </div>
+          ) : (
+            faixas
+          )}
 
           {(!colegioId || !serie) && (
             <div className={`grade ${!colegioId && !serie ? 'grade-2' : ''}`}>
@@ -587,7 +594,7 @@ function EscolherAno(props: { db: Db; avaliacaoId: string; disciplina: Disciplin
 
 function AnaliseQuestoes({ caderno, analise, editar }: { caderno: Caderno; analise: AnaliseQuestao[]; editar: boolean }) {
   const [soComAlerta, setSoComAlerta] = useState(false)
-  const letras = LETRAS.slice(0, caderno.numAlternativas)
+  const letras = LETRAS
   const comAlerta = analise.filter((a) => a.alertas.length)
   const visiveis = soComAlerta ? comAlerta : analise
   const n = analise[0]?.n ?? 0

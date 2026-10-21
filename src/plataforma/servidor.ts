@@ -5,7 +5,7 @@
 import type { PainelRede } from '../lib/rede'
 import { getDb, trocarDados } from '../store/db'
 import { definirPerfil, getPerfil } from '../store/perfil'
-import type { Caderno, Id, Perfil, RespostaAluno } from '../types'
+import { LETRAS, type Caderno, type Id, type Perfil, type RespostaAluno } from '../types'
 import { converterCarga, type Carga } from './carga'
 import { avisar, lerPlataforma, mudarPlataforma } from './estado'
 import { agendarResposta, aplicarPendentes, atualizarBases, comecarFila, enviarRespostas, prepararFila, type Enviar } from './fila'
@@ -158,7 +158,7 @@ function gravarCaderno(id: Id) {
   clearTimeout(p.timer)
   enfileirar('prova', 'salvar_caderno', {
     id: p.caderno.id,
-    num_alternativas: p.caderno.numAlternativas,
+    num_alternativas: LETRAS.length,
     usa_folha: p.caderno.usaFolhaRespostas,
     questoes: p.caderno.questoes,
     motivo: p.motivo ?? null,
@@ -220,8 +220,8 @@ const servidorDaProva: Servidor = {
       .remove(cadernoIds.map(caminhoDoPdf))
       .then(({ error }) => error && avisar('atencao', `O arquivo do PDF ficou no servidor: ${error.message}`))
   },
-  async urlDoPdf(cadernoId: Id, nome: string) {
-    const { data, error } = await sessao().cliente().storage.from('provas').createSignedUrl(caminhoDoPdf(cadernoId), 60, { download: nome })
+  async urlDoPdf(cadernoId: Id) {
+    const { data, error } = await sessao().cliente().storage.from('provas').createSignedUrl(caminhoDoPdf(cadernoId), 60)
     if (error || !data) throw new Error(error && pareceSemRede(error.message) ? SEM_REDE : 'Não foi possível baixar a prova agora. Tente de novo.')
     return data.signedUrl
   },

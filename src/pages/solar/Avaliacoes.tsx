@@ -39,7 +39,7 @@ export default function Avaliacoes() {
       <Cabecalho
         sobretitulo="Provas"
         titulo="Avaliações"
-        subtitulo="A avaliação é anual, com uma prova de Português e outra de Matemática para cada ano. Cada prova tem o PDF, o gabarito e a habilidade de cada questão."
+        subtitulo="A avaliação é anual, com uma prova de Português para cada ano. Cada prova tem o PDF, o gabarito e a habilidade de cada questão."
         acoes={
           editarRede &&
           !criando && (
@@ -108,7 +108,7 @@ export default function Avaliacoes() {
               <div className="progresso-com-texto">
                 <Progresso valor={andamento.concluidas} total={andamento.total} rotulo="Lançamentos concluídos" />
                 <span className="texto-2 pequeno">
-                  {andamento.concluidas} de {andamento.total} lançamentos concluídos (cada turma lança Português e Matemática)
+                  {andamento.concluidas} de {andamento.total} lançamentos concluídos
                 </span>
               </div>
             )}
@@ -199,8 +199,7 @@ export function FormularioAvaliacao(props: {
             ))}
           </div>
           <p className="campo-ajuda">
-            Cada ano ganha duas provas, uma de Português e outra de Matemática, com 8 questões (1º e 2º ano) ou 10 (3º ao 5º) cada. Dá para mudar
-            depois.
+            Cada ano ganha uma prova de Português, com 8 questões (1º e 2º ano) ou 10 (3º ao 5º). Dá para mudar depois.
           </p>
         </fieldset>
       )}

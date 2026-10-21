@@ -22,7 +22,7 @@ import { analisarQuestoesAg, avaliadosAg, mediaAg, progressoAg } from '../../lib
 import { useDb } from '../../store/db'
 import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, type Avaliacao, type Db } from '../../types'
+import { DISCIPLINAS_DA_PROVA, VARIAS_DISCIPLINAS, type Avaliacao, type Db } from '../../types'
 
 interface Pendencia {
   chave: string
@@ -152,7 +152,7 @@ function alertasDeGabarito(db: Db, rede: Rede, avaliacao: Avaliacao | null) {
 
 function Andamento({ db, rede, avaliacao, quem }: { db: Db; rede: Rede; avaliacao: Avaliacao; quem: string }) {
   const [copiado, setCopiado] = useState<string | null>(null)
-  // Uma linha por turma e prova (cada turma lança Português e Matemática).
+  // Uma linha por turma e prova (cada turma lança a prova de cada disciplina).
   const linhas = [...db.colegios]
     .sort((a, b) => compararTexto(a.nome, b.nome))
     .map((colegio) => {
@@ -191,7 +191,7 @@ function Andamento({ db, rede, avaliacao, quem }: { db: Db; rede: Rede; avaliaca
       }
     >
       <p className="resumo-andamento">
-        <strong>{concluidas}</strong> de {total} lançamentos concluídos <span className="texto-2 pequeno">(cada turma lança Português e Matemática)</span>
+        <strong>{concluidas}</strong> de {total} lançamentos concluídos
       </p>
       <Progresso valor={concluidas} total={total} rotulo="Lançamentos concluídos" />
       <div className="andamento-colegios">
@@ -253,7 +253,7 @@ function Andamento({ db, rede, avaliacao, quem }: { db: Db; rede: Rede; avaliaca
                   </div>
                 </>
               ) : (
-                <p className="texto-2 pequeno">Todas as turmas concluíram o lançamento das duas provas.</p>
+                <p className="texto-2 pequeno">Todas as turmas concluíram o lançamento.</p>
               )}
             </details>
           )
@@ -338,10 +338,10 @@ function ResumoResultados({ db, rede, avaliacao }: { db: Db; rede: Rede; avaliac
       <LembreteCooperacao chave="solar-inicio">
         Use estas comparações para descobrir onde apoiar e quem pode compartilhar o que deu certo, não para classificar colégios ou professores.
       </LembreteCooperacao>
-      <div className="grade grade-2 sem-margem">
+      <div className={VARIAS_DISCIPLINAS ? 'grade grade-2 sem-margem' : undefined}>
         {porDisciplina.map((d) => (
           <div key={d.disciplina}>
-            <h3 className="subtitulo">{d.disciplina}</h3>
+            {VARIAS_DISCIPLINAS && <h3 className="subtitulo">{d.disciplina}</h3>}
             <Barras itens={d.colegio} />
           </div>
         ))}

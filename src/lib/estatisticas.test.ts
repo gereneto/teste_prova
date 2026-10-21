@@ -27,7 +27,6 @@ const caderno = (questoes: Questao[]): Caderno => ({
   avaliacaoId: 'av',
   serie: 3,
   disciplina: 'Português',
-  numAlternativas: 4,
   usaFolhaRespostas: true,
   questoes,
   pdf: null,

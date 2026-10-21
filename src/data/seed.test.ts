@@ -61,11 +61,11 @@ describe('dados de exemplo', () => {
     }
   })
 
-  it('têm uma prova de Português e outra de Matemática por ano, com folha de respostas só no 5º ano', () => {
+  it('têm uma prova de Português por ano, com folha de respostas só no 5º ano', () => {
     for (const avaliacao of db.avaliacoes) {
       for (const serie of [1, 2, 3, 4, 5]) {
         const doAno = db.cadernos.filter((c) => c.avaliacaoId === avaliacao.id && c.serie === serie)
-        expect(doAno.map((c) => c.disciplina).sort()).toEqual(['Matemática', 'Português'])
+        expect(doAno.map((c) => c.disciplina)).toEqual(['Português'])
       }
     }
     for (const caderno of db.cadernos) {
@@ -143,9 +143,9 @@ describe('dados de exemplo', () => {
   it('trazem uma turma de cada situação no colégio da versão de teste', () => {
     const caderno = (id: string) => db.cadernos.find((c) => c.id === `cad-2026-${id}`)!
     expect(progressoDe(db, caderno('1-pt'), 'tur-monte-verde-2026-1A').status).toBe('nao_iniciado')
-    expect(progressoDe(db, caderno('3-pt'), 'tur-monte-verde-2026-3A').status).toBe('concluido')
-    expect(progressoDe(db, caderno('3-mat'), 'tur-monte-verde-2026-3A').status).toBe('em_andamento')
-    expect(progressoDe(db, caderno('4-mat'), 'tur-monte-verde-2026-4A').status).toBe('concluido')
+    expect(progressoDe(db, caderno('2-pt'), 'tur-monte-verde-2026-2A').status).toBe('concluido')
+    expect(progressoDe(db, caderno('3-pt'), 'tur-monte-verde-2026-3A').status).toBe('em_andamento')
+    expect(progressoDe(db, caderno('4-pt'), 'tur-monte-verde-2026-4A').status).toBe('concluido')
   })
 
   it('só disparam o alerta de gabarito suspeito na questão errada de propósito', () => {
@@ -156,7 +156,7 @@ describe('dados de exemplo', () => {
         if (analise.alertas.includes('gabarito_suspeito')) suspeitas.push(`${caderno.id}#${analise.indice + 1}`)
       }
     }
-    expect(suspeitas).toEqual(['cad-2026-4-mat#2'])
+    expect(suspeitas).toEqual(['cad-2026-4-pt#2'])
   })
 
   it('põem o professor, a coordenação e a Solar de teste juntos, no mesmo colégio', () => {

@@ -292,7 +292,7 @@ export function analisarQuestoesAg(caderno: Caderno, ags: AgregadoTurma[]): Anal
       acertos += q.acertos
       comAcerto += q.somaComAcerto
     }
-    return analiseDaQuestao(caderno, questao, indice, n, contagem, acertos, correlacaoDeSomas(n, acertos, comAcerto, sT, sT2))
+    return analiseDaQuestao(questao, indice, n, contagem, acertos, correlacaoDeSomas(n, acertos, comAcerto, sT, sT2))
   })
 }
 

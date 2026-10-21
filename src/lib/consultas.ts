@@ -73,22 +73,22 @@ export function avaliacoesOrdenadas(db: Db): Avaliacao[] {
   return [...db.avaliacoes].sort((a, b) => b.aplicacaoInicio.localeCompare(a.aplicacaoInicio))
 }
 
-/** Português antes de Matemática. */
+/** Na ordem de DISCIPLINAS_DA_PROVA. */
 export const ordemDaDisciplina = (a: Disciplina, b: Disciplina) => DISCIPLINAS_DA_PROVA.indexOf(a) - DISCIPLINAS_DA_PROVA.indexOf(b)
 
-/** As provas de uma avaliação: por ano e, em cada ano, Português e depois Matemática. */
+/** As provas de uma avaliação: por ano e, em cada ano, na ordem das disciplinas. */
 export function cadernosDaAvaliacao(db: Db, avaliacaoId: Id): Caderno[] {
   return db.cadernos.filter((c) => c.avaliacaoId === avaliacaoId).sort((a, b) => a.serie - b.serie || ordemDaDisciplina(a.disciplina, b.disciplina))
 }
 
-/** As provas de um ano numa avaliação (Português e Matemática). */
+/** As provas de um ano numa avaliação (uma por disciplina). */
 export const cadernosDaSerie = (db: Db, avaliacaoId: Id, serie: Serie): Caderno[] =>
   cadernosDaAvaliacao(db, avaliacaoId).filter((c) => c.serie === serie)
 
 export const cadernoDe = (db: Db, avaliacaoId: Id, serie: Serie, disciplina: Disciplina): Caderno | undefined =>
   db.cadernos.find((c) => c.avaliacaoId === avaliacaoId && c.serie === serie && c.disciplina === disciplina)
 
-/** A avaliação do ano letivo da turma e as provas que ela faz (Português e Matemática), se houver. */
+/** A avaliação do ano letivo da turma e as provas que ela faz (uma por disciplina), se houver. */
 export function avaliacaoDaTurma(db: Db, turma: Turma): { avaliacao: Avaliacao; cadernos: Caderno[] } | null {
   for (const avaliacao of avaliacoesOrdenadas(db)) {
     if (avaliacao.anoLetivo !== turma.anoLetivo) continue

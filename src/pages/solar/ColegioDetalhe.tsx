@@ -183,7 +183,7 @@ export default function ColegioDetalhe() {
                   <th>Professores</th>
                   <th className="num">Alunos</th>
                   <th className="num">Novos no colégio</th>
-                  {avaliacao && <th>Lançamento (Português · Matemática)</th>}
+                  {avaliacao && <th>Lançamento</th>}
                 </tr>
               </thead>
               <tbody>

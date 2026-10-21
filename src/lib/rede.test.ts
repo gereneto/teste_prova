@@ -27,7 +27,7 @@ import {
   quadroColegioQuestaoAg,
   resumoGruposAg,
 } from './rede'
-import type { Aluno, Caderno, Db, Disciplina, Letra, Turma } from '../types'
+import { DISCIPLINAS_DA_PROVA, type Aluno, type Caderno, type Db, type Disciplina, type Letra, type Turma } from '../types'
 
 // As contas da Solar sobre as somas por turma têm de dar os mesmos números das contas aluno a aluno.
 const db = gerarDadosExemplo('2026-10-15')
@@ -43,7 +43,7 @@ function selecoes() {
   const lista: { rotulo: string; avaliacaoId: string; serie?: number; colegioId?: string; disciplina?: Disciplina }[] = []
   for (const avaliacao of db.avaliacoes) {
     lista.push({ rotulo: `${avaliacao.titulo}, rede`, avaliacaoId: avaliacao.id })
-    for (const disciplina of ['Português', 'Matemática'] as Disciplina[]) {
+    for (const disciplina of DISCIPLINAS_DA_PROVA) {
       lista.push({ rotulo: `${avaliacao.titulo}, ${disciplina}`, avaliacaoId: avaliacao.id, disciplina })
       for (const serie of [1, 3, 5]) lista.push({ rotulo: `${avaliacao.titulo}, ${disciplina}, ${serie}º`, avaliacaoId: avaliacao.id, disciplina, serie })
       for (const colegio of db.colegios.slice(0, 2)) {
@@ -135,7 +135,7 @@ describe('as somas por turma dão os mesmos números que os alunos um a um', () 
   })
 
   it('o gabarito suspeito de propósito aparece também pelas somas', () => {
-    const caderno = cadernoDe('cad-2026-4-mat')!
+    const caderno = cadernoDe('cad-2026-4-pt')!
     const analise = analisarQuestoesAg(caderno, painel.turmas)
     expect(analise[1].alertas).toContain('gabarito_suspeito')
   })
@@ -147,7 +147,7 @@ describe('as mesmas somas do banco (cenário do 09_prova_painel)', () => {
   const q = (gabaritos: string, disciplina: Disciplina) =>
     gabaritos.split('').map((g) => ({ gabarito: g as Letra, disciplina, habilidade: null, anulada: false }))
   const caderno = (id: string, avaliacaoId: string, serie: 2 | 3, disciplina: Disciplina, gabaritos: string): Caderno => ({
-    id, avaliacaoId, serie, disciplina, numAlternativas: 4, usaFolhaRespostas: false, questoes: q(gabaritos, disciplina), pdf: null,
+    id, avaliacaoId, serie, disciplina, usaFolhaRespostas: false, questoes: q(gabaritos, disciplina), pdf: null,
   })
   const turma = (id: string, colegioId: string, anoLetivo: number, serie: 2 | 3, nome: string): Turma => ({
     id, colegioId, anoLetivo, serie, nome, turno: 'Manhã', professorIds: [],

@@ -3,27 +3,30 @@
 
 import { VERSAO_DADOS } from '../data/seed'
 import { textoMudancaAluno } from '../lib/alunos'
-import type {
-  Aluno,
-  Caderno,
-  Coordenador,
-  Db,
-  Disciplina,
-  Evento,
-  Id,
-  Lancamento,
-  MembroSolar,
-  MotivoSaida,
-  PapelSolar,
-  Perfil,
-  Professor,
-  Questao,
-  Serie,
-  Sexo,
-  Situacao,
-  TipoMudancaAluno,
-  Turma,
-  Turno,
+import {
+  DISCIPLINAS_DA_PROVA,
+  LETRAS,
+  type Aluno,
+  type Caderno,
+  type Coordenador,
+  type Db,
+  type Disciplina,
+  type Evento,
+  type Id,
+  type Lancamento,
+  type Letra,
+  type MembroSolar,
+  type MotivoSaida,
+  type PapelSolar,
+  type Perfil,
+  type Professor,
+  type Questao,
+  type Serie,
+  type Sexo,
+  type Situacao,
+  type TipoMudancaAluno,
+  type Turma,
+  type Turno,
 } from '../types'
 
 type Papel = 'professor' | 'coordenacao' | 'coordenacao_responsavel' | 'solar_visualizacao' | 'solar_edicao' | 'solar_responsavel'
@@ -43,7 +46,6 @@ export interface Carga {
     avaliacao: Id
     serie: Serie
     disciplina: Disciplina
-    numAlternativas: 4 | 5
     usaFolhaRespostas: boolean
     questoes: Questao[]
     pdfNome: string | null
@@ -85,6 +87,13 @@ export function horaLocal(valor: string | null | undefined): string {
 }
 
 export const chaveResposta = (caderno: Id, turma: Id, aluno: Id) => `${caderno}__${turma}__${aluno}`
+
+/** A questão só com as 4 alternativas: o banco ainda aceita uma quinta, e um gabarito ou comentário nela sai. */
+function soAsQuatro(q: Questao): Questao {
+  const valida = (l: string): l is Letra => (LETRAS as readonly string[]).includes(l)
+  const comentarios = q.comentarios && Object.fromEntries(Object.entries(q.comentarios).filter(([l]) => valida(l)))
+  return { ...q, gabarito: q.gabarito && valida(q.gabarito) ? q.gabarito : null, ...(comentarios ? { comentarios } : {}) }
+}
 
 const PAPEL_SOLAR: Partial<Record<Papel, PapelSolar>> = {
   solar_responsavel: 'responsavel',
@@ -155,17 +164,20 @@ export function converterCarga(c: Carga): Convertida {
     })
   }
 
-  const cadernos: Caderno[] = c.cadernos.map((x) => ({
-    id: x.id,
-    avaliacaoId: x.avaliacao,
-    serie: x.serie,
-    disciplina: x.disciplina,
-    numAlternativas: x.numAlternativas,
-    usaFolhaRespostas: x.usaFolhaRespostas,
-    questoes: x.questoes,
-    pdf: x.pdfNome ? { nome: x.pdfNome, tamanho: x.pdfTamanho ?? 0, origem: 'enviado', enviadoEm: horaLocal(x.pdfEnviadoEm) } : null,
-    conferencia: x.conferidoEm ? { por: x.conferidoPor ?? '', em: horaLocal(x.conferidoEm) } : null,
-  }))
+  // Só as provas das disciplinas de agora (por enquanto, Português): as de outra disciplina ficam no banco, fora das telas.
+  const cadernos: Caderno[] = c.cadernos
+    .filter((x) => DISCIPLINAS_DA_PROVA.includes(x.disciplina))
+    .map((x) => ({
+      id: x.id,
+      avaliacaoId: x.avaliacao,
+      serie: x.serie,
+      disciplina: x.disciplina,
+      usaFolhaRespostas: x.usaFolhaRespostas,
+      questoes: x.questoes.map(soAsQuatro),
+      pdf: x.pdfNome ? { nome: x.pdfNome, tamanho: x.pdfTamanho ?? 0, origem: 'enviado', enviadoEm: horaLocal(x.pdfEnviadoEm) } : null,
+      conferencia: x.conferidoEm ? { por: x.conferidoPor ?? '', em: horaLocal(x.conferidoEm) } : null,
+    }))
+  const daProva = new Set(cadernos.map((x) => x.id))
 
   const lancamentos = new Map<string, Lancamento>()
   const lancamentoDe = (caderno: Id, turma: Id) => {
@@ -174,14 +186,17 @@ export function converterCarga(c: Carga): Convertida {
     if (!l) lancamentos.set(id, (l = { id, cadernoId: caderno, turmaId: turma, respostas: {}, concluidoEm: null }))
     return l
   }
-  for (const l of c.lancamentos) lancamentoDe(l.caderno, l.turma).concluidoEm = l.concluidoEm ? horaLocal(l.concluidoEm) : null
+  for (const l of c.lancamentos) {
+    if (daProva.has(l.caderno)) lancamentoDe(l.caderno, l.turma).concluidoEm = l.concluidoEm ? horaLocal(l.concluidoEm) : null
+  }
   const bases = new Map<string, string>()
   for (const r of c.respostas) {
+    if (!daProva.has(r.caderno)) continue
     lancamentoDe(r.caderno, r.turma).respostas[r.aluno] = { situacao: r.situacao, marcas: r.marcas, atualizadoEm: horaLocal(r.atualizadoEm), numero: r.numero }
     bases.set(chaveResposta(r.caderno, r.turma, r.aluno), r.atualizadoEm)
   }
 
-  const historico: Evento[] = c.historico.map((h) => ({
+  const historico: Evento[] = c.historico.filter((h) => !h.caderno || daProva.has(h.caderno)).map((h) => ({
     id: h.id,
     em: horaLocal(h.em),
     por: h.por,

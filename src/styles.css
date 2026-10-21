@@ -2228,41 +2228,75 @@ abbr[title] {
   background: #000;
   vertical-align: -0.6mm;
 }
+/* O tamanho das bolinhas sai do total de questões (arranjoDaFolha): a coluna mais comprida tem de caber na página. */
 .folha-questoes {
+  --bolha: 10mm;
+  --entre-linhas: 4.6mm;
+  --entre-bolhas: 3.5mm;
+  --num: 9mm;
+  --num-letra: 13pt;
+  --bolha-letra: 10pt;
+  --coluna-borda: 6mm;
+  --entre-colunas: 8mm;
   display: flex;
   justify-content: space-evenly;
-  gap: 10mm;
+  gap: var(--entre-colunas);
   flex: 1;
   align-items: flex-start;
 }
+.folha-media {
+  --bolha: 8.5mm;
+  --entre-linhas: 2.6mm;
+  --entre-bolhas: 3.5mm;
+  --coluna-borda: 4.5mm 6mm;
+}
+.folha-pequena {
+  --bolha: 7mm;
+  --entre-linhas: 2.2mm;
+  --entre-bolhas: 3mm;
+  --num: 8mm;
+  --num-letra: 11pt;
+  --bolha-letra: 9pt;
+  --coluna-borda: 4mm 5mm;
+}
+.folha-mini {
+  --bolha: 6.2mm;
+  --entre-linhas: 1.5mm;
+  --entre-bolhas: 2.5mm;
+  --num: 7mm;
+  --num-letra: 10pt;
+  --bolha-letra: 8pt;
+  --coluna-borda: 3mm;
+  --entre-colunas: 5mm;
+}
 .folha-coluna {
   display: grid;
-  gap: 4.6mm;
-  padding: 6mm 7mm;
+  gap: var(--entre-linhas);
+  padding: var(--coluna-borda);
   border: 0.3mm solid #000;
   border-radius: 3mm;
 }
 .folha-linha {
   display: flex;
   align-items: center;
-  gap: 4mm;
+  gap: var(--entre-bolhas);
 }
 .folha-num {
-  width: 9mm;
+  width: var(--num);
   text-align: right;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 13pt;
+  font-size: var(--num-letra);
 }
 .folha-bolha {
-  width: 10mm;
-  height: 10mm;
+  width: var(--bolha);
+  height: var(--bolha);
   border: 0.35mm solid #000;
   border-radius: 50%;
   display: grid;
   place-items: center;
   font-family: var(--font-display);
-  font-size: 10pt;
+  font-size: var(--bolha-letra);
   font-weight: 700;
   color: #444;
 }

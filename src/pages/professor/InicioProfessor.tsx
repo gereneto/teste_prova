@@ -103,7 +103,7 @@ function CartaoTurma({ db, turma }: { db: Db; turma: Turma }) {
   )
 }
 
-/** Como está o lançamento de cada prova (Português e Matemática) da turma. */
+/** Como está o lançamento de cada prova (uma por disciplina) da turma. */
 function situacoesDaTurma(db: Db, turma: Turma, cadernos: Caderno[]) {
   return cadernos.map((caderno) => {
     const lancamento = lancamentoDe(db, caderno.id, turma.id)
@@ -115,7 +115,7 @@ function situacoesDaTurma(db: Db, turma: Turma, cadernos: Caderno[]) {
 const situacaoEmTexto = (p: Progresso) =>
   p.status === 'concluido' ? 'concluído' : p.status === 'nao_iniciado' ? 'não começou' : `${p.lancados} de ${p.total} lançados`
 
-/** O próximo passo da turma em uma frase e um botão: a primeira prova (Português, depois Matemática) ainda não concluída. */
+/** O próximo passo da turma em uma frase e um botão: a primeira prova (na ordem das disciplinas) ainda não concluída. */
 function ProximoPasso({ db, turma }: { db: Db; turma: Turma }) {
   const prova = avaliacaoDaTurma(db, turma)
   if (!prova) {
@@ -147,7 +147,7 @@ function ProximoPasso({ db, turma }: { db: Db; turma: Turma }) {
     detalhe = 'A coordenação imprime as provas.'
     botao = { rotulo: 'Conferir a lista de alunos', para: `${base}/turma/${turma.id}/alunos` }
   } else if (!pendente) {
-    frase = situacoes.length > 1 ? 'Pronto! As duas provas foram lançadas. Veja como foi a turma.' : 'Pronto! Veja como foi a turma.'
+    frase = situacoes.length > 1 ? 'Pronto! Todas as provas foram lançadas. Veja como foi a turma.' : 'Pronto! Veja como foi a turma.'
     detalhe = lancamento?.concluidoEm ? `Lançamento concluído em ${dataLonga(lancamento.concluidoEm)}.` : null
     botao = { rotulo: 'Ver resultados', para: `${base}/resultados/${caderno.id}/${turma.id}` }
   } else if (alunos.length > 0 && progresso.lancados === alunos.length) {

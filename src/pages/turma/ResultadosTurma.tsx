@@ -33,7 +33,7 @@ import { identificacao } from '../../lib/iniciais'
 import { comentarioEmFrase } from '../../lib/leitura'
 import { analisarQuestoesAg, avaliadosAg, desempenhoAg, faixasAg, mediaAg, participacaoAg, progressoAg, resumoGruposAg } from '../../lib/rede'
 import { useRede } from '../../store/painel'
-import { BRANCO, DISCIPLINAS_DA_PROVA, LETRAS, RASURA, VAZIO, type Caderno, type Letra } from '../../types'
+import { BRANCO, DISCIPLINAS_DA_PROVA, LETRAS, RASURA, VARIAS_DISCIPLINAS, VAZIO, type Caderno, type Letra } from '../../types'
 import { CabecalhoTurma } from './CabecalhoTurma'
 import { useContextoTurma, type ContextoTurma } from './contexto'
 
@@ -63,7 +63,7 @@ interface Numeros {
   participacao: Participacao
   mediaAcertos: number
   faixas: readonly number[]
-  /** As duas provas da turma, para comparar. */
+  /** As provas da turma (uma por disciplina), para comparar. */
   porDisciplina: Desempenho[]
   porHabilidade: Desempenho[]
   analise: AnaliseQuestao[]
@@ -78,7 +78,7 @@ function TelaResultados(contexto: ContextoTurma) {
 
 function ComAlunos(contexto: ContextoTurma) {
   const { db, caderno, avaliacao, turma, lancamento, alunos } = contexto
-  // Os números são desta prova (Português ou Matemática); "Acerto por disciplina" compara com a outra prova da turma.
+  // Os números são desta prova; com mais de uma disciplina, "Acerto por disciplina" compara com as outras provas da turma.
   const resultados = useMemo(
     () => coletarResultados(db, { avaliacaoId: avaliacao.id, turmaId: turma.id, cadernoId: caderno.id }),
     [db, avaliacao.id, turma.id, caderno.id],
@@ -220,7 +220,7 @@ function TelaComNumeros({ contexto, numeros, resultados }: { contexto: ContextoT
       ) : aba === 'alunos' ? (
         <Alunos {...{ db, caderno, avaliacao, turma, resultados }} />
       ) : aba === 'questoes' ? (
-        <Questoes caderno={caderno} analise={analise} />
+        <Questoes analise={analise} />
       ) : (
         <Habilidades porHabilidade={numeros.porHabilidade} />
       )}
@@ -233,6 +233,11 @@ function Resumo({ numeros, caderno }: { numeros: Numeros; caderno: Caderno }) {
   const part = numeros.participacao
   const validas = caderno.questoes.filter(questaoValida).length
   const porDisciplina = DISCIPLINAS_DA_PROVA.map((d) => numeros.porDisciplina.find((x) => x.chave === d)).filter(Boolean)
+  const faixas = (
+    <Cartao titulo="Alunos por faixa de acerto">
+      <Histograma contagem={numeros.faixas} />
+    </Cartao>
+  )
   return (
     <>
       <div className="grade grade-kpis grade-kpis-3">
@@ -241,14 +246,16 @@ function Resumo({ numeros, caderno }: { numeros: Numeros; caderno: Caderno }) {
         <Kpi rotulo="Questões que contam" valor={validas} detalhe={caderno.questoes.length > validas ? `${caderno.questoes.length - validas} fora do cálculo` : 'todas'} />
       </div>
 
-      <div className="grade grade-2">
-        <Cartao titulo="Alunos por faixa de acerto">
-          <Histograma contagem={numeros.faixas} />
-        </Cartao>
-        <Cartao titulo="Acerto por disciplina" sub="As duas provas da turma.">
-          <Barras itens={porDisciplina.map((d) => ({ chave: d!.chave, rotulo: d!.chave, valor: d!.pct, detalhe: plural(d!.questoes, 'questão', 'questões') }))} />
-        </Cartao>
-      </div>
+      {VARIAS_DISCIPLINAS ? (
+        <div className="grade grade-2">
+          {faixas}
+          <Cartao titulo="Acerto por disciplina" sub="As provas da turma, lado a lado.">
+            <Barras itens={porDisciplina.map((d) => ({ chave: d!.chave, rotulo: d!.chave, valor: d!.pct, detalhe: plural(d!.questoes, 'questão', 'questões') }))} />
+          </Cartao>
+        </div>
+      ) : (
+        faixas
+      )}
 
       <Cartao titulo="Acerto por questão" sub="Percentual da turma que acertou cada questão. A linha tracejada marca a metade.">
         <ColunasPorQuestao itens={analise.map((a) => ({ numero: a.indice + 1, valor: a.pctAcerto }))} />
@@ -426,8 +433,8 @@ function FichaAluno({ resultado, caderno }: { resultado: ResultadoAluno; caderno
   )
 }
 
-function Questoes({ caderno, analise }: { caderno: Caderno; analise: AnaliseQuestao[] }) {
-  const letras = LETRAS.slice(0, caderno.numAlternativas)
+function Questoes({ analise }: { analise: AnaliseQuestao[] }) {
+  const letras = LETRAS
   return (
     <Cartao titulo="Questões" sub="Acerto de cada questão e quantos alunos marcaram cada alternativa">
       <div className="tabela-rolagem">

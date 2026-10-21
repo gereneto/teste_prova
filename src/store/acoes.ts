@@ -663,7 +663,6 @@ export function cadernoEmBranco(avaliacaoId: Id, serie: Serie, disciplina: Disci
     avaliacaoId,
     serie,
     disciplina,
-    numAlternativas: 4,
     usaFolhaRespostas: serie === 5,
     questoes: Array.from({ length: questoesDaProva(serie) }, () => ({ gabarito: null, disciplina, habilidade: null, anulada: false })),
     pdf: null,
@@ -671,7 +670,7 @@ export function cadernoEmBranco(avaliacaoId: Id, serie: Serie, disciplina: Disci
   }
 }
 
-/** Cria a avaliação com as provas de Português e de Matemática de cada ano escolhido. */
+/** Cria a avaliação com a prova de cada disciplina (por enquanto, só Português) de cada ano escolhido. */
 export function criarAvaliacao(dados: DadosAvaliacao, series: Serie[]): Id {
   const id = novoId('av')
   const cadernos = series.flatMap((serie) => DISCIPLINAS_DA_PROVA.map((disciplina) => cadernoEmBranco(id, serie, disciplina)))
@@ -696,7 +695,7 @@ const cadernoParaOBanco = (c: Caderno) => ({
   id: c.id,
   serie: c.serie,
   disciplina: c.disciplina,
-  numAlternativas: c.numAlternativas,
+  numAlternativas: LETRAS.length,
   usaFolhaRespostas: c.usaFolhaRespostas,
   questoes: c.questoes,
 })
@@ -754,15 +753,6 @@ function comCaderno(id: Id, alterar: (caderno: Draft<Caderno>, db: Draft<Db>) =>
 
 export const temRespostasNaProva = (db: Db, cadernoId: Id) =>
   db.lancamentos.some((l) => l.cadernoId === cadernoId && Object.keys(l.respostas).length > 0)
-
-export function definirAlternativas(id: Id, numAlternativas: 4 | 5) {
-  comCaderno(id, (caderno) => {
-    caderno.numAlternativas = numAlternativas
-    const permitidas: readonly string[] = LETRAS.slice(0, numAlternativas)
-    for (const q of caderno.questoes) if (q.gabarito && !permitidas.includes(q.gabarito)) q.gabarito = null
-    caderno.conferencia = null
-  })
-}
 
 export function definirFolhaRespostas(id: Id, usa: boolean) {
   comCaderno(id, (caderno) => {

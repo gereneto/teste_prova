@@ -85,7 +85,7 @@ export default function InicioCoordenacao() {
     }
   }
   if (avaliacao && ['aplicacao', 'lancamento'].includes(etapaAvaliacao(avaliacao))) {
-    // Cada turma lança duas provas, Português e Matemática: conta cada uma.
+    // Cada turma lança a prova de cada disciplina: conta cada uma.
     const naoComecaram = turmas.flatMap((t) =>
       cadernosDaSerie(db, avaliacao.id, t.serie).filter((caderno) => progressoDe(db, caderno, t.id).status === 'nao_iniciado'),
     )
@@ -95,8 +95,7 @@ export default function InicioCoordenacao() {
         texto: (
           <>
             {descreverPrazo(avaliacao.prazoLancamento)} para lançar as respostas, e{' '}
-            <strong>{plural(naoComecaram.length, 'lançamento ainda não começou', 'lançamentos ainda não começaram')}</strong> (cada turma lança a
-            prova de Português e a de Matemática).
+            <strong>{plural(naoComecaram.length, 'lançamento ainda não começou', 'lançamentos ainda não começaram')}</strong>.
           </>
         ),
         acao: { rotulo: 'Ver andamento', para: '#andamento' },
@@ -144,7 +143,7 @@ export default function InicioCoordenacao() {
       <div className="grade grade-2">
         <Cartao
           titulo="Provas"
-          sub="As provas de Português e de Matemática de todos os anos, para baixar e imprimir. Só a coordenação tem acesso."
+          sub="As provas de todos os anos, para baixar e imprimir. Só a coordenação tem acesso."
           acoes={
             <Link className="btn" to={`${base}/provas`}>
               <Printer size={16} aria-hidden /> Ver provas
@@ -197,7 +196,7 @@ function PrimeirosPassos() {
 /** O andamento do lançamento, sem médias e sem vermelho: serve para ajudar, não para cobrar. */
 function Andamento({ db, avaliacao, turmas, quem }: { db: Db; avaliacao: Avaliacao; turmas: Turma[]; quem: string }) {
   const [copiado, setCopiado] = useState<string | null>(null)
-  // Uma linha por turma e prova (Português e Matemática).
+  // Uma linha por turma e prova (uma por disciplina).
   const linhas = turmas.flatMap((turma) =>
     cadernosDaSerie(db, avaliacao.id, turma.serie).map((caderno) => ({
       turma,

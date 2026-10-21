@@ -1,6 +1,6 @@
 # Prova Solar
 
-Site para aplicar a avaliação anual da Solar, em papel, nas escolas do Fundamental I (1º ao 5º ano). A prova tem Português e Matemática. O professor lança a alternativa que cada aluno marcou, o site corrige pelo gabarito e mostra os resultados da turma, do colégio e da rede.
+Site para aplicar a avaliação anual da Solar, em papel, nas escolas do Fundamental I (1º ao 5º ano). A prova é de Português, com 4 alternativas (A a D) em cada questão. O professor lança a alternativa que cada aluno marcou, o site corrige pelo gabarito e mostra os resultados da turma, do colégio e da rede.
 
 **Versão de teste:** sem senha, com dados fictícios e e-mails simulados.
 Endereço: <https://gereneto.github.io/teste_prova/>
@@ -19,20 +19,20 @@ A tela inicial pergunta que visão você quer ver. Cada perfil entra direto com 
 
 Um roteiro para ver tudo em poucos minutos:
 
-1. **Professor(a).** O Início diz o que fazer agora: “Você parou no aluno nº 12”. Toque em “Continuar de onde parei” e lance alguns alunos pelo teclado (`1` a `4` marcam e avançam, `espaço` é em branco, `X` é rasurada, `Enter` vai para o próximo aluno) ou tocando nas letras.
+1. **Professor(a).** O Início diz o que fazer agora: “Em Português, você parou no aluno nº 13”. Toque em “Continuar de onde parei” e lance alguns alunos pelo teclado (`1` a `4` marcam e avançam, `espaço` é em branco, `X` é rasurada, `Enter` vai para o próximo aluno) ou tocando nas letras.
    - Lance um aluno todo em branco: o site pergunta se ele faltou.
    - Lance dois alunos seguidos com as mesmas respostas: o site pergunta se a mesma prova foi lançada duas vezes.
-   - Conclua o lançamento e veja os resultados em gráficos: alunos por faixa de acerto, acerto por disciplina e por questão, novos e antigos, meninas e meninos.
+   - Conclua o lançamento e veja os resultados em gráficos: alunos por faixa de acerto, acerto por questão, novos e antigos, meninas e meninos.
    - Na aba Alunos, preencha a última linha para incluir um aluno: número de chamada (pode ter letras), iniciais (o site passa para maiúsculas), sexo e ano de entrada. Dá para deixar casas em branco: elas ficam em amarelo até alguém completar. A mudança vale na hora, e a coordenação recebe um aviso.
 2. **Coordenação.** O Início lista o que precisa de atenção: avisos de professores, uma turma sem professor, turmas com dados faltando e o andamento do lançamento (sem médias e sem cobrança).
    - Em “Avisos”, veja o que os professores mudaram nas listas e toque em “Ciente”. Não é preciso aprovar nada; se quiser, corrija na turma.
-   - Em “Provas”, baixe a prova de cada ano para imprimir. Só a coordenação tem esta aba. No 5º ano, imprima também as folhas de respostas de cada turma, que já saem com o número e as iniciais de cada aluno.
+   - Em “Provas”, baixe a prova de cada ano para imprimir. Só a coordenação tem esta aba. O arquivo sai com o nome da prova, sem acentos (“Prova Solar de Lingua Portuguesa 1o ano.pdf”), e o leitor de PDF mostra na aba o título certo, qualquer que seja o título gravado no PDF enviado. No 5º ano, imprima também as folhas de respostas de cada turma, que já saem com o número e as iniciais de cada aluno; as colunas e o tamanho das bolinhas se ajustam ao número de questões (até 60), para tudo caber numa folha A4.
    - Em “Professores”, cadastre um professor: o site manda para o e-mail dele um link de acesso. Corrija o e-mail e um link novo é enviado; o antigo para de valer.
    - Em “Resultados”, veja os gráficos do colégio. As turmas ficam em “Ver por turma”, com o lembrete de cooperação.
-3. **Equipe Solar.** O Início aponta o gabarito do 4º ano ainda não conferido, o alerta de gabarito suspeito na questão 12 e um colégio sem responsável.
+3. **Equipe Solar.** O Início aponta o gabarito do 4º ano ainda não conferido, o alerta de gabarito suspeito na questão 2 e um colégio sem responsável.
    - Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa (ou a responsável pela equipe Solar) define quem responde pela coordenação: torna responsável qualquer pessoa da coordenação do colégio, ou cadastra uma nova, que recebe o link de acesso por e-mail. A coordenação não passa a responsabilidade.
    - Em “Resultados”, escolha o 4º ano: o quadro de pontos de melhoria mostra cada questão em cada colégio.
-   - Em “Avaliações”, troque o gabarito da questão 12 do 4º ano para A. Como já há respostas lançadas, o site pede um motivo, recalcula tudo e mostra um aviso nos resultados das turmas do 4º ano.
+   - Em “Avaliações”, troque o gabarito da questão 2 do 4º ano para A. Como já há respostas lançadas, o site pede um motivo, recalcula tudo e mostra um aviso nos resultados das turmas do 4º ano.
 4. **E-mails enviados.** Nesta versão os e-mails não saem de verdade: ficam na página “E-mails enviados” (link no rodapé da tela inicial). Abra o link de um e-mail para entrar direto na conta da pessoa.
 
 Duas abas abertas ao mesmo tempo, cada uma num perfil, mostram uma mudança aparecendo na outra.
@@ -66,8 +66,8 @@ Nesta versão os e-mails não são enviados: eles ficam guardados e aparecem em 
 ## O que esta versão faz
 
 - **Alunos só pelas iniciais.** O aluno aparece como “Nº 7 · ACS” (iniciais só com as letras, sem pontos), com o número de chamada do colégio, que pode ter letras. Cada aluno tem ainda sexo e ano de entrada no colégio. Casas em branco são aceitas e lembradas depois; números repetidos e iniciais repetidas geram um aviso.
-- **Avaliação anual de Português e Matemática.** Uma avaliação por ano, com uma prova para cada ano: 16 questões no 1º e no 2º ano, 20 do 3º ao 5º. Só o 5º ano usa folha de respostas. Os dados de exemplo têm a de 2025 (encerrada) e a de 2026 (em lançamento).
-- **Resultados em gráficos.** Alunos por faixa de acerto (menos de 20%, 20% a 39%, 40% a 59%, 60% a 79%, 80% ou mais), acerto por disciplina, por questão, por ano e por colégio, e a comparação entre novos e antigos e entre meninas e meninos. As cores vão do vermelho (menos acertos) ao azul (mais acertos).
+- **Avaliação anual de Português.** Uma avaliação por ano, com uma prova para cada ano, e 4 alternativas (A a D) em cada questão. Nos dados de exemplo, 8 questões no 1º e no 2º ano e 10 do 3º ao 5º; a Solar muda o número na prova (até 60). Só o 5º ano usa folha de respostas. Os dados de exemplo têm a de 2025 (encerrada) e a de 2026 (em lançamento).
+- **Resultados em gráficos.** Alunos por faixa de acerto (menos de 20%, 20% a 39%, 40% a 59%, 60% a 79%, 80% ou mais), acerto por questão, por ano e por colégio, e a comparação entre novos e antigos e entre meninas e meninos. As cores vão do vermelho (menos acertos) ao azul (mais acertos).
 - **Professor:**
   - Início com uma frase e um botão para o próximo passo, e o lembrete de dados faltando na turma.
   - Página da turma com as abas Lançar respostas, Resultados e Alunos.
@@ -114,8 +114,8 @@ Nesta versão os e-mails não são enviados: eles ficam guardados e aparecem em 
   - alunos sem ano de entrada (2º ano B), sem sexo (1º ano C) e sem número (4º ano B);
   - avisos de professores: a inclusão do nº 17 no 3º ano A e uma saída no 1º ano B, ainda não vistos, e uma correção que a coordenação já viu.
 - A Escola Recanto do Saber está sem responsável pela coordenação.
-- O gabarito da questão 12 da prova do 4º ano está errado de propósito, para o alerta aparecer.
-- As questões 3 e 12 da prova do 3º ano têm comentários de exemplo da equipe pedagógica.
+- O gabarito da questão 2 da prova do 4º ano está errado de propósito, para o alerta aparecer.
+- A questão 3 da prova do 3º ano tem um comentário de exemplo da equipe pedagógica.
 
 As respostas simuladas seguem um modelo em que alunos mais proficientes acertam mais. **A diferença entre alunos novos e antigos também é simulada:** os novos foram gerados com desempenho um pouco menor (cerca de 7 pontos percentuais), só para a comparação ter o que mostrar. Não é um resultado real.
 
@@ -139,6 +139,7 @@ O código fica em <https://github.com/solar-colegios/prova-solar>. Cada envio pa
 | `src/lib/leitura.ts` | Comentários das questões e quadro colégio x questão |
 | `src/lib/alunos.ts` | Ordem da chamada, dados faltando e o texto de cada mudança na lista de alunos |
 | `src/lib/consultas.ts` | Consultas aos dados, pessoas e permissões de cada perfil |
+| `src/lib/pdf.ts` | Nome e título do PDF da prova baixado: o título vai numa atualização incremental no fim do arquivo, sem mexer no resto |
 | `src/lib/iniciais.ts` | Formato das iniciais (maiúsculas com ponto) e conferência de iniciais repetidas |
 | `src/store` | Onde os dados ficam e o que cada tela pode alterar: na demonstração, no navegador; na plataforma, as mesmas ações também vão ao banco, pela ponte de `src/plataforma` |
 | `src/plataforma` | Só na versão da plataforma (abaixo): sessão, carga do banco, funções do banco, fila do lançamento, entrada |

@@ -1,8 +1,8 @@
-"""Gera os PDFs fictícios das provas usadas nos dados de exemplo: uma prova de Português e outra de
-Matemática para cada ano (decisão de 2026-10-19).
+"""Gera os PDFs fictícios das provas usadas nos dados de exemplo: uma prova de cada disciplina para cada
+ano (decisão de 2026-10-19). Por enquanto a prova é só de Português (2026-10-21).
 
 Uso: python scripts/gerar_pdfs_exemplo.py
-Saída: public/exemplos/prova-exemplo-{1..5}ano-{pt,mat}.pdf, e os tamanhos para src/data/seed.ts
+Saída: public/exemplos/prova-exemplo-{1..5}ano-pt.pdf, e os tamanhos para src/data/seed.ts
 """
 from pathlib import Path
 
@@ -13,7 +13,7 @@ from reportlab.pdfgen import canvas
 DESTINO = Path(__file__).resolve().parent.parent / "public" / "exemplos"
 
 # Mesmo número de questões de src/data/seed.ts (questoesDaProva): 8 no 1º e no 2º ano, 10 do 3º ao 5º.
-DISCIPLINAS = {"pt": "Português", "mat": "Matemática"}
+DISCIPLINAS = {"pt": "Português"}
 
 
 def questoes_da_prova(ano):

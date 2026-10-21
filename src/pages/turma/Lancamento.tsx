@@ -21,7 +21,7 @@ export default function Lancamento() {
   return <TelaLancamento {...contexto} />
 }
 
-const TECLAS_LETRA: Record<string, number> = { a: 0, b: 1, c: 2, d: 3, e: 4, '1': 0, '2': 1, '3': 2, '4': 3, '5': 4 }
+const TECLAS_LETRA: Record<string, number> = { a: 0, b: 1, c: 2, d: 3, '1': 0, '2': 1, '3': 2, '4': 3 }
 
 // As linhas das questões alternam as cores do símbolo da Solar, o que ajuda a não pular linha ao copiar do papel.
 const CORES_DAS_LINHAS = ['cor-vermelha', 'cor-laranja', 'cor-amarela'] as const
@@ -32,7 +32,7 @@ function TelaLancamento(contexto: ContextoTurma) {
   const { db, perfil, caderno, turma, colegio, lancamento, alunos, base } = contexto
   const navigate = useNavigate()
   const total = caderno.questoes.length
-  const letras = LETRAS.slice(0, caderno.numAlternativas)
+  const letras = LETRAS
   const resposta = (id: Id) => lancamento?.respostas[id]
   const completo = (id: Id) => respostaCompleta(caderno, resposta(id))
 
@@ -176,10 +176,8 @@ function TelaLancamento(contexto: ContextoTurma) {
     if ((tecla === 'enter' || tecla === ' ') && alvo?.closest('button, a')) return
     const letra = TECLAS_LETRA[tecla]
     if (letra !== undefined) {
-      if (letra < caderno.numAlternativas) {
-        e.preventDefault()
-        marcar(LETRAS[letra])
-      }
+      e.preventDefault()
+      marcar(LETRAS[letra])
       return
     }
     if (tecla === ' ' || tecla === '0' || tecla === '-') marcar(BRANCO)
@@ -461,7 +459,7 @@ function TelaLancamento(contexto: ContextoTurma) {
               {mensagem?.texto}
             </p>
             <p className="atalhos">
-              No teclado: <kbd>1</kbd> a <kbd>{caderno.numAlternativas}</kbd> marca e avança · <kbd>espaço</kbd> em branco · <kbd>X</kbd>{' '}
+              No teclado: <kbd>1</kbd> a <kbd>{LETRAS.length}</kbd> marca e avança · <kbd>espaço</kbd> em branco · <kbd>X</kbd>{' '}
               rasurada · <kbd>⌫</kbd> volta uma questão · <kbd>Enter</kbd> próximo aluno
             </p>
           </section>

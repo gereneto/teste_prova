@@ -24,7 +24,7 @@ import { AVISO_COMPARACAO, baixarCsv, paraNomeDeArquivo } from '../../lib/export
 import { pct, plural, serieNome, turmaNome } from '../../lib/formato'
 import { useDb } from '../../store/db'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, SERIES, type Disciplina, type Serie, type Turma } from '../../types'
+import { DISCIPLINAS_DA_PROVA, SERIES, VARIAS_DISCIPLINAS, type Disciplina, type Serie, type Turma } from '../../types'
 
 /** Mínimo de alunos avaliados para mostrar a média de uma turma; com menos, mostra só as faixas. */
 const MINIMO_POR_TURMA = 8
@@ -38,8 +38,8 @@ export default function ResultadosColegio() {
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   const avaliacoes = avaliacoesOrdenadas(db)
   const avaliacao = db.avaliacoes.find((a) => a.id === params.get('avaliacao')) ?? avaliacaoAtual(db) ?? avaliacoes[0]
-  // Cada ano faz duas provas: os números são de uma (Português ou Matemática); a comparação entre as duas fica
-  // em "Acerto por disciplina" e na tabela das turmas.
+  // Cada ano faz uma prova por disciplina: os números são de uma; com mais de uma disciplina, a comparação entre
+  // elas fica em "Acerto por disciplina" e na tabela das turmas.
   const disciplina: Disciplina = DISCIPLINAS_DA_PROVA.find((d) => d === params.get('disciplina')) ?? DISCIPLINAS_DA_PROVA[0]
   const todos = useMemo(
     () => (colegio && avaliacao ? coletarResultados(db, { avaliacaoId: avaliacao.id, colegioId: colegio.id }) : []),
@@ -119,9 +119,13 @@ export default function ResultadosColegio() {
             <Cartao titulo="Alunos por faixa de acerto">
               <Histograma contagem={contarFaixas(resultados)} />
             </Cartao>
-            <Cartao titulo="Acerto por disciplina" sub="As duas provas, lado a lado.">
-              <Barras itens={porDisciplina.map((d) => ({ chave: d!.chave, rotulo: d!.chave, valor: d!.pct }))} />
-              <h3 className="subtitulo subtitulo-espaco">Acerto médio por ano em {disciplina}</h3>
+            <Cartao titulo={VARIAS_DISCIPLINAS ? 'Acerto por disciplina' : 'Acerto médio por ano'} sub={VARIAS_DISCIPLINAS ? 'As provas, lado a lado.' : undefined}>
+              {VARIAS_DISCIPLINAS && (
+                <>
+                  <Barras itens={porDisciplina.map((d) => ({ chave: d!.chave, rotulo: d!.chave, valor: d!.pct }))} />
+                  <h3 className="subtitulo subtitulo-espaco">Acerto médio por ano em {disciplina}</h3>
+                </>
+              )}
               <Barras itens={porAno.map((x) => ({ chave: String(x.serie), rotulo: serieNome(x.serie), valor: mediaPct(x.resultados), detalhe: plural(avaliados(x.resultados).length, 'aluno', 'alunos') }))} />
               <p className="texto-2 pequeno">Cada ano fez uma prova diferente.</p>
             </Cartao>
@@ -171,8 +175,9 @@ export default function ResultadosColegio() {
   )
 }
 
-/** Qual das duas provas os números mostram. */
+/** Qual prova (de que disciplina) os números mostram. Com uma disciplina só, não aparece. */
 export function SeletorDisciplina(props: { valor: Disciplina; aoMudar: (disciplina: Disciplina) => void }) {
+  if (!VARIAS_DISCIPLINAS) return null
   return (
     <div className="segmentos segmentos-grandes" role="group" aria-label="Prova">
       {DISCIPLINAS_DA_PROVA.map((d) => (
@@ -221,11 +226,12 @@ function TurmasDoAno(props: {
               <th>Turma</th>
               <th>Alunos por faixa de acerto ({props.disciplina})</th>
               <th className="num">Acerto médio ({props.disciplina})</th>
-              {DISCIPLINAS_DA_PROVA.map((d) => (
-                <th key={d} className="num">
-                  {d}
-                </th>
-              ))}
+              {VARIAS_DISCIPLINAS &&
+                DISCIPLINAS_DA_PROVA.map((d) => (
+                  <th key={d} className="num">
+                    {d}
+                  </th>
+                ))}
             </tr>
           </thead>
           <tbody>
@@ -245,10 +251,10 @@ function TurmasDoAno(props: {
                   <td>
                     <MiniFaixas contagem={contarFaixas(l.rs)} />
                   </td>
-                  <td className="num">
+                  <td className={`num ${!VARIAS_DISCIPLINAS && p.avaliados > 0 && !(poucos && l.turmaId) ? `calor-${faixaDe(mediaPct(l.rs) ?? 0)}` : ''}`}>
                     {p.avaliados === 0 ? <span className="texto-2">sem resultados</span> : poucos && l.turmaId ? <span className="texto-2">poucos alunos</span> : pct(mediaPct(l.rs))}
                   </td>
-                  {DISCIPLINAS_DA_PROVA.map((d) => {
+                  {VARIAS_DISCIPLINAS && DISCIPLINAS_DA_PROVA.map((d) => {
                     const v = porDisciplina.get(d)
                     return (
                       <td key={d} className={`num ${v != null && !(poucos && l.turmaId) ? `calor-${faixaDe(v)}` : ''}`}>

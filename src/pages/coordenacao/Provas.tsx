@@ -10,7 +10,7 @@ import { usePerfil } from '../../store/perfil'
 import { SERIES, type Caderno } from '../../types'
 
 /**
- * As provas de todos os anos, para a coordenação baixar e imprimir: em cada ano, a de Português e a de Matemática.
+ * As provas de todos os anos, para a coordenação baixar e imprimir: em cada ano, a de cada disciplina.
  * Professores não imprimem provas.
  */
 export default function Provas() {
@@ -18,6 +18,7 @@ export default function Provas() {
   const perfil = usePerfil()
   const [params, setParams] = useSearchParams()
   const [erro, setErro] = useState<string | null>(null)
+  const [baixando, setBaixando] = useState<string | null>(null)
   const colegio = perfil?.papel === 'coordenacao' ? db.colegios.find((c) => c.id === perfil.colegioId) : undefined
   const avaliacoes = avaliacoesOrdenadas(db)
   const avaliacao = db.avaliacoes.find((a) => a.id === params.get('avaliacao')) ?? avaliacaoAtual(db) ?? avaliacoes[0]
@@ -29,10 +30,13 @@ export default function Provas() {
 
   async function baixar(caderno: Caderno) {
     setErro(null)
+    setBaixando(caderno.id)
     try {
       await baixarPdfDoCaderno(caderno)
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível baixar a prova.')
+    } finally {
+      setBaixando(null)
     }
   }
 
@@ -84,8 +88,8 @@ export default function Provas() {
                     </span>
                     <span className="form-acoes">
                       {caderno.pdf ? (
-                        <button className="btn btn-primario btn-pequeno" onClick={() => baixar(caderno)}>
-                          <Download size={15} aria-hidden /> Baixar a prova
+                        <button className="btn btn-primario btn-pequeno" onClick={() => baixar(caderno)} disabled={baixando === caderno.id}>
+                          <Download size={15} aria-hidden /> {baixando === caderno.id ? 'Baixando…' : 'Baixar a prova'}
                         </button>
                       ) : (
                         <Selo tom="ambar">A Solar ainda não enviou o PDF</Selo>
@@ -102,7 +106,7 @@ export default function Provas() {
               </ul>
               {comFolha ? (
                 <p className="texto-2 pequeno">
-                  No {serieNome(serie)}, os alunos marcam as respostas numa folha separada para cada prova, que já sai com o número de chamada e as
+                  No {serieNome(serie)}, os alunos marcam as respostas numa folha separada, que já sai com o número de chamada e as
                   iniciais de cada um.
                 </p>
               ) : (
