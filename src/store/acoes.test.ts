@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { PESSOAS_DE_TESTE } from '../data/seed'
 import { pessoaPorToken } from '../lib/consultas'
-import { atualizarAluno, criarAluno, criarProfessor, editarProfessor, excluirCadastroDoAluno, marcarCiente, novoId, restaurarDadosDeExemplo } from './acoes'
+import { painelDosDados, respostasPorColegio } from '../lib/rede'
+import { fraseConfere, fraseParaExcluirProva } from '../lib/formato'
+import { atualizarAluno, criarAluno, criarProfessor, editarProfessor, excluirCadastroDoAluno, marcarCiente, novoId, removerCaderno, restaurarDadosDeExemplo, textoAvisoExclusao } from './acoes'
 import { getDb } from './db'
 import { definirPerfil } from './perfil'
 
@@ -81,5 +83,39 @@ describe('links de acesso', () => {
     expect(segundo).not.toBe(primeiro)
     expect(pessoaPorToken(getDb(), primeiro)).toBeNull()
     expect(editarProfessor(id, { nome: 'Rita C. Lopes', email: 'rita.lopes@colegio.example' }).emailEnviado).toBeNull()
+  })
+})
+
+describe('prova excluída com respostas', () => {
+  it('fica arquivada, com as respostas por colégio, e a coordenação é avisada', () => {
+    definirPerfil({ papel: 'solar', membroId: PESSOAS_DE_TESTE.membroSolarId })
+    const db = getDb()
+    const caderno = db.cadernos.find((c) => db.lancamentos.some((l) => l.cadernoId === c.id && Object.keys(l.respostas).length))!
+    const respostas = respostasPorColegio(db, painelDosDados(db).turmas, caderno.id)
+    expect(respostas.length).toBeGreaterThan(0)
+    expect(respostas.reduce((s, r) => s + r.alunos, 0)).toBeGreaterThan(0)
+    const avisosAntes = getDb().historico.filter((e) => e.avisarCoordenacao).length
+    removerCaderno(caderno.id, respostas)
+    const depois = getDb()
+    expect(depois.cadernos.some((c) => c.id === caderno.id)).toBe(false)
+    expect(depois.lancamentos.some((l) => l.cadernoId === caderno.id)).toBe(false)
+    expect(depois.excluidas).toHaveLength(1)
+    expect(depois.excluidas[0]).toMatchObject({ cadernoId: caderno.id, serie: caderno.serie, colegios: respostas, questoes: caderno.questoes.length })
+    const avisos = depois.historico.filter((e) => e.avisarCoordenacao)
+    expect(avisos).toHaveLength(avisosAntes + respostas.length)
+    expect(avisos.at(-1)!.texto).toBe(textoAvisoExclusao(caderno, depois.excluidas[0]!.avaliacaoTitulo, respostas.at(-1)!))
+    expect(avisos.at(-1)!.turmaId).toBeNull()
+  })
+
+  it('sem respostas, sai de vez', () => {
+    const caderno = getDb().cadernos[0]!
+    removerCaderno(caderno.id)
+    expect(getDb().excluidas).toHaveLength(0)
+  })
+
+  it('pede a frase, sem olhar maiúsculas, acentos e espaços a mais', () => {
+    expect(fraseParaExcluirProva({ serie: 5, disciplina: 'Português' })).toBe('excluir prova portugues quinto ano')
+    expect(fraseConfere('  Excluir prova  Português quinto ano ', 'excluir prova portugues quinto ano')).toBe(true)
+    expect(fraseConfere('excluir prova portugues quarto ano', 'excluir prova portugues quinto ano')).toBe(false)
   })
 })

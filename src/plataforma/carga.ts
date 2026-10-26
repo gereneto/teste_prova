@@ -56,6 +56,21 @@ export interface Carga {
   }[]
   lancamentos: { caderno: Id; turma: Id; concluidoEm: string | null }[]
   respostas: { caderno: Id; turma: Id; aluno: Id; situacao: Situacao; marcas: string; numero: string; atualizadoEm: string }[]
+  /** Só para a Solar (RLS); um banco antes da migração provas_excluidas não manda. */
+  excluidas?: {
+    id: Id
+    caderno: Id
+    avaliacao: Id
+    avaliacaoTitulo: string
+    anoLetivo: number
+    serie: Serie
+    disciplina: Disciplina
+    questoes: number
+    pdfNome: string | null
+    colegios: { colegio: Id; nome: string; turmas: number; alunos: number }[]
+    em: string
+    por: string
+  }[]
   historico: {
     id: Id
     em: string
@@ -226,6 +241,20 @@ export function converterCarga(c: Carga): Convertida {
     avaliacoes: c.avaliacoes.map((a) => ({ ...a })),
     cadernos,
     lancamentos: [...lancamentos.values()],
+    excluidas: (c.excluidas ?? []).map((e) => ({
+      id: e.id,
+      cadernoId: e.caderno,
+      avaliacaoId: e.avaliacao,
+      avaliacaoTitulo: e.avaliacaoTitulo,
+      anoLetivo: e.anoLetivo,
+      serie: e.serie,
+      disciplina: e.disciplina,
+      questoes: e.questoes,
+      pdf: e.pdfNome ? { nome: e.pdfNome, tamanho: 0, origem: 'enviado', enviadoEm: '' } : null,
+      colegios: e.colegios.map((x) => ({ colegioId: x.colegio, nome: x.nome, turmas: x.turmas, alunos: x.alunos })),
+      em: horaLocal(e.em),
+      por: e.por,
+    })),
     historico,
     emails: [],
     config: { anoLetivo: c.anoLetivo },
@@ -259,6 +288,7 @@ export function dbVazio(): Db {
     avaliacoes: [],
     cadernos: [],
     lancamentos: [],
+    excluidas: [],
     historico: [],
     emails: [],
     config: { anoLetivo: new Date().getFullYear() },
