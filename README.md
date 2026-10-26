@@ -76,7 +76,7 @@ Nesta versão os e-mails não são enviados: eles ficam guardados e aparecem em 
   - Lista de alunos em que cada linha é um aluno, como no lançamento.
 - **Coordenação:**
   - Início com o que precisa de atenção e o andamento do lançamento, com lembrete pronto para copiar.
-  - Avisos das mudanças feitas pelos professores, com “Ciente” e “Marcar todos como vistos”.
+  - Avisos das mudanças feitas pelos professores (e da Solar, quando ela exclui uma prova que o colégio já lançou), com “Ciente” e “Marcar todos como vistos”.
   - Provas de todos os anos para baixar, e folhas de respostas do 5º ano por turma.
   - Resultados do colégio; as turmas aparecem sempre na mesma ordem, sem ranking e com o lembrete de cooperação.
   - Professores: desativar em vez de apagar, e mais de um professor por turma.
@@ -88,6 +88,7 @@ Nesta versão os e-mails não são enviados: eles ficam guardados e aparecem em 
   - Resultados com participação, turmas em ordem fixa e pontos de melhoria (colégio x questão).
   - Análise de cada questão com alertas escritos em palavras.
   - Conferência do gabarito, motivo obrigatório para mudar a correção depois do lançamento, e comentário por alternativa, que aparece para o professor.
+  - Prova com respostas também se exclui, digitando uma frase de confirmação (“excluir prova portugues quinto ano”); ela fica arquivada em “Provas excluídas”, no fim de Avaliações, e cada colégio é avisado.
   - Equipe com responsável, edição e visualização.
 - **Em todo o site:**
   - O mesmo vocabulário nos três perfis.
