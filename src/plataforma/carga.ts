@@ -6,8 +6,11 @@ import { textoMudancaAluno } from '../lib/alunos'
 import {
   DISCIPLINAS_DA_PROVA,
   LETRAS,
+  TEXTO_ARQUIVOU,
   type Aluno,
   type Caderno,
+  type Colegio,
+  type ColegioArquivado,
   type Coordenador,
   type Db,
   type Disciplina,
@@ -144,6 +147,14 @@ export function converterCarga(c: Carga): Convertida {
     if (!p || professores.some((x) => x.id === p.id && x.colegioId === v.colegio)) continue
     professores.push({ id: p.id, colegioId: v.colegio!, nome: p.nome, email: p.email, ativo: v.ativo && p.ativo && colegiosAtivos.has(v.colegio!), token: '' })
   }
+  // A equipe dos colégios arquivados (os vínculos continuam no banco; só o colégio está desligado), para a Solar
+  // ver quem perdeu o acesso.
+  const equipeArquivada: Coordenador[] = []
+  for (const v of c.vinculos.filter((x) => x.ativo && x.colegio && !colegiosAtivos.has(x.colegio) && (x.papel === 'coordenacao' || x.papel === 'coordenacao_responsavel'))) {
+    const p = pessoas.get(v.pessoa)
+    if (!p?.ativo || equipeArquivada.some((x) => x.id === p.id && x.colegioId === v.colegio)) continue
+    equipeArquivada.push({ id: p.id, colegioId: v.colegio!, nome: p.nome, email: p.email, telefone: p.telefone ?? '', responsavel: v.papel === 'coordenacao_responsavel', token: '' })
+  }
 
   const equipeSolar: MembroSolar[] = ativosDe(['solar_responsavel', 'solar_edicao', 'solar_visualizacao']).map((v) => {
     const p = pessoas.get(v.pessoa)!
@@ -228,19 +239,40 @@ export function converterCarga(c: Carga): Convertida {
     ...(h.campos ? { campos: h.campos } : {}),
   }))
 
+  // Os colégios arquivados saem das listas e das contas da rede; o que era deles vai junto para db.arquivados.
+  const colegio = (x: Carga['colegios'][number]): Colegio => ({ id: x.id, nome: x.nome, cidade: x.cidade ?? '', uf: x.uf ?? '', membroSolarId: x.cuidadoPor })
+  const turmaAtiva = (turmaId: Id | null) => !turmaId || colegiosAtivos.has(turmas.find((t) => t.id === turmaId)?.colegioId ?? '')
+  const arquivados: ColegioArquivado[] = c.colegios
+    .filter((x) => !x.ativo)
+    .map((x) => {
+      const doColegio = new Set(turmas.filter((t) => t.colegioId === x.id).map((t) => t.id))
+      const eventos = historico.filter((e) => e.colegioId === x.id)
+      const arquivou = eventos.findLast((e) => e.texto === TEXTO_ARQUIVOU)
+      return {
+        colegio: colegio(x),
+        em: arquivou?.em ?? '',
+        por: arquivou?.por ?? '',
+        coordenadores: equipeArquivada.filter((p) => p.colegioId === x.id),
+        professores: professores.filter((p) => p.colegioId === x.id),
+        turmas: turmas.filter((t) => doColegio.has(t.id)),
+        alunos: alunos.filter((a) => doColegio.has(a.turmaId)),
+        lancamentos: [...lancamentos.values()].filter((l) => doColegio.has(l.turmaId)),
+        historico: eventos,
+      }
+    })
+
   const db: Db = {
     versao: VERSAO_DADOS,
-    colegios: c.colegios
-      .filter((x) => x.ativo)
-      .map((x) => ({ id: x.id, nome: x.nome, cidade: x.cidade ?? '', uf: x.uf ?? '', membroSolarId: x.cuidadoPor })),
+    colegios: c.colegios.filter((x) => x.ativo).map(colegio),
+    arquivados,
     coordenadores,
-    professores,
+    professores: professores.filter((p) => colegiosAtivos.has(p.colegioId)),
     equipeSolar,
-    turmas,
-    alunos,
+    turmas: turmas.filter((t) => colegiosAtivos.has(t.colegioId)),
+    alunos: alunos.filter((a) => turmaAtiva(a.turmaId)),
     avaliacoes: c.avaliacoes.map((a) => ({ ...a })),
     cadernos,
-    lancamentos: [...lancamentos.values()],
+    lancamentos: [...lancamentos.values()].filter((l) => turmaAtiva(l.turmaId)),
     excluidas: (c.excluidas ?? []).map((e) => ({
       id: e.id,
       cadernoId: e.caderno,
@@ -255,7 +287,7 @@ export function converterCarga(c: Carga): Convertida {
       em: horaLocal(e.em),
       por: e.por,
     })),
-    historico,
+    historico: historico.filter((e) => !e.colegioId || colegiosAtivos.has(e.colegioId)),
     emails: [],
     config: { anoLetivo: c.anoLetivo },
   }
@@ -280,6 +312,7 @@ export function dbVazio(): Db {
   return {
     versao: VERSAO_DADOS,
     colegios: [],
+    arquivados: [],
     coordenadores: [],
     professores: [],
     equipeSolar: [],

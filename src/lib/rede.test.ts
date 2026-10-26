@@ -160,6 +160,7 @@ describe('as mesmas somas do banco (cenário do 09_prova_painel)', () => {
   const base: Db = {
     versao: 0, coordenadores: [], professores: [], equipeSolar: [], excluidas: [], historico: [], emails: [], config: { anoLetivo: 2026 },
     colegios: [{ id: 'A', nome: 'A', cidade: '', uf: '', membroSolarId: null }, { id: 'B', nome: 'B', cidade: '', uf: '', membroSolarId: null }],
+    arquivados: [],
     turmas: [turma('2A25', 'A', 2025, 2, 'A'), turma('3A', 'A', 2026, 3, 'A'), turma('3B', 'A', 2026, 3, 'B'), turma('B3A', 'B', 2026, 3, 'A')],
     alunos: [
       aluno('a1', '3A', '1', 'AA', 'F', 2024), aluno('a2', '3A', '2', 'BB', 'M', 2025), aluno('a3', '3A', '3', 'CC', 'F', 2026),

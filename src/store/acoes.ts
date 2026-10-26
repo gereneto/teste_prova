@@ -7,6 +7,7 @@ import { formatarIniciais } from '../lib/iniciais'
 import {
   DISCIPLINAS_DA_PROVA,
   LETRAS,
+  TEXTO_ARQUIVOU,
   VAZIO,
   type Aluno,
   type Caderno,
@@ -187,6 +188,75 @@ export function editarColegio(id: Id, dados: DadosColegio) {
     if (colegio) Object.assign(colegio, dados)
   })
   servidor()?.rpc('plataforma', 'editar_colegio', { id, ...dados })
+}
+
+/**
+ * Arquiva o colégio: ele sai das listas e das contas da rede, e a coordenação e os professores dele perdem o acesso.
+ * Nada se apaga: o que era do colégio vai junto para db.arquivados, e reativar devolve tudo.
+ */
+export function arquivarColegio(id: Id) {
+  atualizar((db) => {
+    const colegio = db.colegios.find((c) => c.id === id)
+    if (!colegio) return
+    registrar(db, TEXTO_ARQUIVOU, { colegioId: id })
+    const turmas = new Set(db.turmas.filter((t) => t.colegioId === id).map((t) => t.id))
+    const evento = db.historico[db.historico.length - 1]
+    db.arquivados.push({
+      colegio,
+      em: evento.em,
+      por: evento.por,
+      coordenadores: db.coordenadores.filter((c) => c.colegioId === id),
+      professores: db.professores.filter((p) => p.colegioId === id),
+      turmas: db.turmas.filter((t) => turmas.has(t.id)),
+      alunos: db.alunos.filter((a) => turmas.has(a.turmaId)),
+      lancamentos: db.lancamentos.filter((l) => turmas.has(l.turmaId)),
+      historico: db.historico.filter((e) => e.colegioId === id),
+    })
+    db.colegios = db.colegios.filter((c) => c.id !== id)
+    db.coordenadores = db.coordenadores.filter((c) => c.colegioId !== id)
+    db.professores = db.professores.filter((p) => p.colegioId !== id)
+    db.turmas = db.turmas.filter((t) => !turmas.has(t.id))
+    db.alunos = db.alunos.filter((a) => !turmas.has(a.turmaId))
+    db.lancamentos = db.lancamentos.filter((l) => !turmas.has(l.turmaId))
+    db.historico = db.historico.filter((e) => e.colegioId !== id)
+  })
+  servidor()?.rpc('plataforma', 'arquivar_colegio', { colegio: id })
+}
+
+/** Devolve o colégio arquivado às listas, com tudo o que era dele; a equipe volta a entrar. */
+export function reativarColegio(id: Id) {
+  atualizar((db) => {
+    const arquivado = db.arquivados.find((a) => a.colegio.id === id)
+    if (!arquivado) return
+    db.arquivados = db.arquivados.filter((a) => a !== arquivado)
+    db.colegios.push(arquivado.colegio)
+    db.coordenadores.push(...arquivado.coordenadores)
+    db.professores.push(...arquivado.professores)
+    db.turmas.push(...arquivado.turmas)
+    db.alunos.push(...arquivado.alunos)
+    db.lancamentos.push(...arquivado.lancamentos)
+    db.historico.push(...arquivado.historico)
+    db.historico.sort((a, b) => a.em.localeCompare(b.em))
+    registrar(db, 'Reativou o colégio.', { colegioId: id })
+  })
+  servidor()?.rpc('plataforma', 'reativar_colegio', { colegio: id })
+}
+
+/**
+ * Exclui em definitivo um colégio arquivado (só a pessoa responsável pela equipe Solar): saem as turmas, os alunos,
+ * as respostas, o histórico e os acessos dele. Fica no histórico da Solar uma linha dizendo que foi excluído.
+ */
+export function excluirColegio(id: Id) {
+  atualizar((db) => {
+    const arquivado = db.arquivados.find((a) => a.colegio.id === id)
+    if (!arquivado) return
+    db.arquivados = db.arquivados.filter((a) => a !== arquivado)
+    // Das provas excluídas sai a parte do colégio (o banco tira também a cópia das respostas).
+    for (const prova of db.excluidas) prova.colegios = prova.colegios.filter((c) => c.colegioId !== id)
+    const { nome, cidade, uf } = arquivado.colegio
+    registrar(db, `Excluiu em definitivo o ${nome} (${[cidade, uf].filter(Boolean).join('/')}).`)
+  })
+  servidor()?.rpc('plataforma', 'excluir_colegio', { colegio: id })
 }
 
 /** A pessoa responsável pela equipe Solar escolhe quem da Solar cuida de cada colégio. */

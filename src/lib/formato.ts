@@ -107,3 +107,12 @@ export const fraseConfere = (digitado: string, frase: string) =>
 export function ordenarTurmas<T extends Pick<Turma, 'serie' | 'nome'>>(turmas: T[]): T[] {
   return [...turmas].sort((a, b) => a.serie - b.serie || compararTexto(a.nome, b.nome))
 }
+
+/** O nome do colégio sem o "Colégio" do começo, sem acentos e em minúsculas: "catena aurea". */
+const nomeParaFrase = (nome: string) => normalizar(nome).replace(/^\s*colegio\s+/, '').replace(/\s+/g, ' ').trim()
+
+/** O que a Solar digita para arquivar um colégio: "arquivo colegio catena aurea". */
+export const fraseParaArquivarColegio = (nome: string) => `arquivo colegio ${nomeParaFrase(nome)}`
+
+/** E para excluí-lo em definitivo: "excluir colegio catena aurea". */
+export const fraseParaExcluirColegio = (nome: string) => `excluir colegio ${nomeParaFrase(nome)}`
