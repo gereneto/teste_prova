@@ -1,10 +1,11 @@
 import { BadgeCheck, ChartColumn, Download, MessageSquareText, Pencil, Trash2, Upload } from 'lucide-react'
-import { useState, type ChangeEvent } from 'react'
+import { useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { SeletorHabilidade } from '../../components/SeletorHabilidade'
 import { Aviso, Cabecalho, Cartao, Confirmacao, Janela, Vazio } from '../../components/ui'
 import { cadernosDaAvaliacao, descreverPeriodo, permissoesDe, pessoaDoPerfil } from '../../lib/consultas'
-import { dataCurta, dataLonga, plural, provaNome, serieNome, tamanhoArquivo } from '../../lib/formato'
+import { dataCurta, dataLonga, fraseConfere, fraseParaExcluirAvaliacao, fraseParaExcluirProva, plural, provaNome, serieNome, tamanhoArquivo } from '../../lib/formato'
+import { respostasPorColegio } from '../../lib/rede'
 import {
   adicionarCaderno,
   aplicarGabarito,
@@ -19,12 +20,13 @@ import {
   removerAvaliacao,
   removerCaderno,
   removerPdf,
+  type RespostasPorCaderno,
 } from '../../store/acoes'
 import { baixarPdfDoCaderno } from '../../store/arquivos'
 import { useDb } from '../../store/db'
 import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, VARIAS_DISCIPLINAS, type Caderno, type Disciplina, type Letra, type Questao, type Serie } from '../../types'
+import { DISCIPLINAS_DA_PROVA, LETRAS, SERIES, VARIAS_DISCIPLINAS, type Caderno, type Disciplina, type Letra, type Questao, type RespostasDoColegio, type Serie } from '../../types'
 import { FormularioAvaliacao, pendenciasDoCaderno } from './Avaliacoes'
 import { PLATAFORMA } from '../../plataforma/modo'
 
@@ -39,6 +41,7 @@ export default function AvaliacaoDetalhe() {
   const navigate = useNavigate()
   const [editando, setEditando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
+  const [frase, setFrase] = useState('')
   const avaliacao = db.avaliacoes.find((a) => a.id === avaliacaoId)
   if (!avaliacao) return <Vazio titulo="Avaliação não encontrada" acao={<Link className="btn" to="/solar/avaliacoes">Voltar</Link>} />
   const { editarRede } = permissoesDe(perfil ? pessoaDoPerfil(db, perfil) : null)
@@ -49,6 +52,7 @@ export default function AvaliacaoDetalhe() {
   const caderno = cadernos.find((c) => c.serie === serie && c.disciplina === disciplina)
   // As turmas que já lançaram respostas, pelas somas da rede (a Solar não vê as respostas).
   const comRespostas = cadernos.some((c) => turmasComRespostas(rede, c) > 0)
+  const respostasDasProvas: RespostasPorCaderno = Object.fromEntries(cadernos.map((c) => [c.id, respostasPorColegio(db, rede.painel.turmas, c.id)]))
   const historico = db.historico.filter((e) => e.cadernoId && cadernos.some((c) => c.id === e.cadernoId)).slice(-10).reverse()
 
   return (
@@ -158,7 +162,13 @@ export default function AvaliacaoDetalhe() {
 
       {editarRede && (
         <div className="zona-perigo">
-          <button className="btn btn-perigo" onClick={() => setExcluindo(true)}>
+          <button
+            className="btn btn-perigo"
+            onClick={() => {
+              setFrase('')
+              setExcluindo(true)
+            }}
+          >
             <Trash2 size={16} aria-hidden /> Excluir avaliação
           </button>
         </div>
@@ -169,16 +179,27 @@ export default function AvaliacaoDetalhe() {
         aberta={excluindo}
         rotuloConfirmar="Excluir a avaliação e as provas"
         perigo
+        bloqueado={comRespostas && !fraseConfere(frase, fraseParaExcluirAvaliacao(avaliacao.anoLetivo))}
         aoConfirmar={() => {
-          removerAvaliacao(avaliacao.id)
+          removerAvaliacao(avaliacao.id, respostasDasProvas)
           navigate('/solar/avaliacoes')
         }}
         aoFechar={() => setExcluindo(false)}
       >
-        <p>
-          Saem do site as provas de todos os anos{comRespostas ? ' e todas as respostas já lançadas pelos professores. Os resultados desta avaliação deixam de existir' : ''}.
-          Não dá para desfazer.
-        </p>
+        {comRespostas ? (
+          <ConfirmarComRespostas
+            sobre="avaliação"
+            respostas={somarPorColegio(Object.values(respostasDasProvas).filter((r) => r !== undefined))}
+            frase={fraseParaExcluirAvaliacao(avaliacao.anoLetivo)}
+            digitado={frase}
+            aoDigitar={setFrase}
+          >
+            Ao excluir, saem do site as provas de todos os anos, com as respostas e os resultados, e a coordenação de cada colégio recebe um aviso. A
+            Solar guarda uma cópia das provas que tinham respostas, que fica em “Avaliações”, no fim da página, em “Provas excluídas”.
+          </ConfirmarComRespostas>
+        ) : (
+          <p>Saem do site as provas de todos os anos. Não dá para desfazer.</p>
+        )}
       </Confirmacao>
     </>
   )
@@ -192,7 +213,52 @@ interface MudancaPendente {
 /** Quantas turmas já lançaram respostas da prova, pelas somas da rede. */
 const turmasComRespostas = (rede: Rede, caderno: Caderno) => rede.painel.turmas.filter((ag) => ag.caderno === caderno.id && ag.comResposta > 0).length
 
+/** Juntas por colégio: as respostas de todas as provas de uma avaliação. */
+function somarPorColegio(listas: RespostasDoColegio[][]): RespostasDoColegio[] {
+  const porColegio = new Map<string, RespostasDoColegio>()
+  for (const item of listas.flat()) {
+    const soma = porColegio.get(item.colegioId) ?? { ...item, turmas: 0, alunos: 0 }
+    soma.turmas += item.turmas
+    soma.alunos += item.alunos
+    porColegio.set(item.colegioId, soma)
+  }
+  return [...porColegio.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
+/** O que já foi lançado, por colégio, e a frase que a Solar digita para confirmar a exclusão. */
+function ConfirmarComRespostas(props: {
+  sobre: 'prova' | 'avaliação'
+  respostas: RespostasDoColegio[]
+  frase: string
+  digitado: string
+  aoDigitar: (texto: string) => void
+  children: ReactNode
+}) {
+  return (
+    <>
+      <p>
+        {props.sobre === 'prova' ? 'Esta prova' : 'Esta avaliação'} já tem respostas lançadas{props.respostas.length > 1 ? ' por estes colégios' : ''}:
+      </p>
+      <ul className="lista-respostas">
+        {props.respostas.map((r) => (
+          <li key={r.colegioId}>
+            <strong>{r.nome}</strong>: {plural(r.alunos, 'aluno', 'alunos')}, em {plural(r.turmas, 'turma', 'turmas')}
+          </li>
+        ))}
+      </ul>
+      <p>{props.children}</p>
+      <label className="campo">
+        <span>
+          Para confirmar, digite: <strong className="frase-confirmar">{props.frase}</strong>
+        </span>
+        <input value={props.digitado} onChange={(e) => props.aoDigitar(e.target.value)} autoComplete="off" spellCheck={false} autoFocus />
+      </label>
+    </>
+  )
+}
+
 function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Caderno; editavel: boolean }) {
+  const db = useDb()
   const [numQuestoes, setNumQuestoes] = useState(String(caderno.questoes.length))
   const [gabaritoTexto, setGabaritoTexto] = useState('')
   const [mensagem, setMensagem] = useState<{ texto: string; erro: boolean } | null>(null)
@@ -202,10 +268,12 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
   const [motivo, setMotivo] = useState('')
   const [reduzindo, setReduzindo] = useState<number | null>(null)
   const [excluindo, setExcluindo] = useState(false)
+  const [frase, setFrase] = useState('')
   const [comentando, setComentando] = useState<number | null>(null)
   const letras: readonly string[] = LETRAS
   const total = caderno.questoes.length
   const comRespostas = turmasComRespostas(rede, caderno)
+  const respostas = respostasPorColegio(db, rede.painel.turmas, caderno.id)
   const semGabarito = caderno.questoes.some((q) => !q.anulada && !q.gabarito)
 
   /** Depois que há respostas lançadas, mudar o gabarito pede um motivo, que vai para o histórico e para o aviso às turmas. */
@@ -279,7 +347,13 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
             </button>
           )}
           {editavel && (
-            <button className="btn btn-pequeno btn-fantasma" onClick={() => setExcluindo(true)}>
+            <button
+              className="btn btn-pequeno btn-fantasma"
+              onClick={() => {
+                setFrase('')
+                setExcluindo(true)
+              }}
+            >
               <Trash2 size={15} aria-hidden /> Excluir prova
             </button>
           )}
@@ -514,20 +588,30 @@ function EditorCaderno({ rede, caderno, editavel }: { rede: Rede; caderno: Cader
       </Confirmacao>
 
       <Confirmacao
-        titulo={`Excluir a prova do ${serieNome(caderno.serie)}?`}
+        titulo={`Excluir a prova de ${provaNome(caderno)}?`}
         aberta={excluindo}
         rotuloConfirmar="Excluir a prova"
         perigo
+        bloqueado={respostas.length > 0 && !fraseConfere(frase, fraseParaExcluirProva(caderno))}
         aoConfirmar={() => {
-          removerCaderno(caderno.id)
+          removerCaderno(caderno.id, respostas)
           setExcluindo(false)
         }}
         aoFechar={() => setExcluindo(false)}
       >
-        <p>
-          A prova sai da avaliação
-          {comRespostas ? `, junto com as respostas de ${plural(comRespostas, 'turma', 'turmas')}` : ''}. Não dá para desfazer.
-        </p>
+        {respostas.length ? (
+          <>
+            {caderno.pdf && (
+              <Aviso tom="info">Se o problema é só o arquivo, não precisa excluir: use “Trocar PDF”, no quadro “Prova em PDF”. As respostas continuam.</Aviso>
+            )}
+            <ConfirmarComRespostas sobre="prova" respostas={respostas} frase={fraseParaExcluirProva(caderno)} digitado={frase} aoDigitar={setFrase}>
+              Ao excluir, a prova sai do site: as turmas deixam de ver as respostas e os resultados dela, e a coordenação de cada colégio recebe um
+              aviso. A Solar guarda uma cópia, que fica em “Avaliações”, no fim da página, em “Provas excluídas”.
+            </ConfirmarComRespostas>
+          </>
+        ) : (
+          <p>A prova sai da avaliação. Não dá para desfazer.</p>
+        )}
       </Confirmacao>
     </Cartao>
   )

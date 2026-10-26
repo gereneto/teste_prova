@@ -2666,6 +2666,17 @@ html.letra-maior .janela {
   grid-template-columns: 56px minmax(0, 1fr);
   gap: 10px;
 }
+.lista-respostas {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+.lista-respostas li {
+  margin: 4px 0;
+}
+.frase-confirmar {
+  color: var(--text-heading);
+  user-select: all;
+}
 .historico-data {
   font-family: var(--font-display);
   font-weight: 700;

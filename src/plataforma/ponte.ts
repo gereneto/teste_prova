@@ -26,8 +26,8 @@ export interface Servidor {
 export interface OpcoesRpc {
   /** O cadastro devolve um convite: a função acesso manda o e-mail. */
   convite?: boolean
-  /** Depois de dar certo (por exemplo, apagar os PDFs de uma avaliação excluída). */
-  depois?: () => void
+  /** Depois de dar certo, com o que a RPC devolveu (por exemplo, apagar os PDFs de uma avaliação excluída). */
+  depois?: (resultado: unknown) => void
 }
 
 let registrado: Servidor | null = null

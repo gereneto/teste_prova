@@ -158,7 +158,7 @@ describe('as mesmas somas do banco (cenário do 09_prova_painel)', () => {
   })
   const r = (marcas: string, situacao: 'presente' | 'faltou' = 'presente') => ({ situacao, marcas, atualizadoEm: '2026-10-10T10:00:00', numero: '' })
   const base: Db = {
-    versao: 0, coordenadores: [], professores: [], equipeSolar: [], historico: [], emails: [], config: { anoLetivo: 2026 },
+    versao: 0, coordenadores: [], professores: [], equipeSolar: [], excluidas: [], historico: [], emails: [], config: { anoLetivo: 2026 },
     colegios: [{ id: 'A', nome: 'A', cidade: '', uf: '', membroSolarId: null }, { id: 'B', nome: 'B', cidade: '', uf: '', membroSolarId: null }],
     turmas: [turma('2A25', 'A', 2025, 2, 'A'), turma('3A', 'A', 2026, 3, 'A'), turma('3B', 'A', 2026, 3, 'B'), turma('B3A', 'B', 2026, 3, 'A')],
     alunos: [

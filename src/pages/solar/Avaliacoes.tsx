@@ -1,15 +1,17 @@
-import { ChartColumn, Eye, Pencil, Plus } from 'lucide-react'
+import { ChartColumn, Download, Eye, Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Cabecalho, Cartao, Progresso, Selo, Vazio, type Tom } from '../../components/ui'
+import { Aviso, Cabecalho, Cartao, Progresso, Selo, Vazio, type Tom } from '../../components/ui'
 import { avaliacoesOrdenadas, cadernosDaAvaliacao, descreverPeriodo, etapaAvaliacao, permissoesDe, pessoaDoPerfil, turmasDoAno, type EtapaAvaliacao } from '../../lib/consultas'
 import { progressoAg } from '../../lib/rede'
-import { serieNome } from '../../lib/formato'
+import { dataLonga, plural, provaNome, serieNome } from '../../lib/formato'
 import { criarAvaliacao, type DadosAvaliacao } from '../../store/acoes'
+import { baixarPdfDoCaderno } from '../../store/arquivos'
 import { useDb } from '../../store/db'
 import { useRede, type Rede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
-import { DISCIPLINAS_DA_PROVA, SERIES, type Avaliacao, type Caderno, type Db, type Serie } from '../../types'
+import { DISCIPLINAS_DA_PROVA, SERIES, type Avaliacao, type Caderno, type Db, type ProvaExcluida, type Serie } from '../../types'
+import { PLATAFORMA } from '../../plataforma/modo'
 
 export const ETAPAS: Record<EtapaAvaliacao, { rotulo: string; tom: Tom }> = {
   agendada: { rotulo: 'Agendada', tom: 'info' },
@@ -115,7 +117,52 @@ export default function Avaliacoes() {
           </Cartao>
         )
       })}
+      {db.excluidas.length > 0 && <ProvasExcluidas excluidas={db.excluidas} />}
     </>
+  )
+}
+
+/** As provas excluídas que já tinham respostas: o que havia e quem excluiu. A cópia das respostas fica no banco. */
+function ProvasExcluidas({ excluidas }: { excluidas: ProvaExcluida[] }) {
+  const [erro, setErro] = useState<string | null>(null)
+  async function baixar(e: ProvaExcluida) {
+    setErro(null)
+    try {
+      await baixarPdfDoCaderno({ id: e.cadernoId, pdf: e.pdf, disciplina: e.disciplina, serie: e.serie })
+    } catch (falha) {
+      setErro(PLATAFORMA && falha instanceof Error ? falha.message : 'O PDF desta prova não está salvo neste navegador.')
+    }
+  }
+  return (
+    <details className="cartao recolhivel">
+      <summary>Provas excluídas ({excluidas.length})</summary>
+      <p className="texto-2">
+        Provas que já tinham respostas lançadas quando foram excluídas. Elas não aparecem mais para ninguém, mas as respostas ficaram guardadas.
+      </p>
+      {erro && <Aviso tom="perigo">{erro}</Aviso>}
+      <ul className="lista-pessoas">
+        {[...excluidas].reverse().map((e) => (
+          <li key={e.id}>
+            <div>
+              <strong>
+                Prova de {provaNome(e)} · {e.avaliacaoTitulo}
+              </strong>
+              <p className="texto-2 pequeno">
+                {plural(e.questoes, 'questão', 'questões')} · excluída por {e.por} em {dataLonga(e.em)}
+              </p>
+              <p className="pequeno">
+                Respostas: {e.colegios.map((c) => `${c.nome} (${plural(c.alunos, 'aluno', 'alunos')}, em ${plural(c.turmas, 'turma', 'turmas')})`).join('; ')}
+              </p>
+            </div>
+            {e.pdf && (
+              <button className="btn btn-pequeno" onClick={() => baixar(e)}>
+                <Download size={15} aria-hidden /> Baixar a prova
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 

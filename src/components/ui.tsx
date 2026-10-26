@@ -352,6 +352,8 @@ export function Confirmacao(props: {
   rotuloConfirmar: string
   rotuloDesistir?: string
   perigo?: boolean
+  /** Enquanto falta algo (por exemplo, a frase de confirmação), o botão de confirmar fica desligado. */
+  bloqueado?: boolean
   aoConfirmar: () => void
   aoFechar: () => void
   children: ReactNode
@@ -363,7 +365,7 @@ export function Confirmacao(props: {
       aoFechar={props.aoFechar}
       acoes={
         <>
-          <button type="button" className={`btn ${props.perigo ? 'btn-perigo-cheio' : 'btn-primario'}`} onClick={props.aoConfirmar}>
+          <button type="button" className={`btn ${props.perigo ? 'btn-perigo-cheio' : 'btn-primario'}`} onClick={props.aoConfirmar} disabled={props.bloqueado}>
             {props.rotuloConfirmar}
           </button>
           <button type="button" className="btn btn-fantasma" onClick={props.aoFechar}>

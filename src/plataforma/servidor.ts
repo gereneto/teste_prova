@@ -188,7 +188,7 @@ function enfileirar(schema: 'prova' | 'plataforma', nome: string, args: Record<s
       await enviarRespostas() // o lançamento pendente vai antes de qualquer outra mudança
       const r = await chamar<Cadastro | null>(schema, nome, args)
       if (opcoes.convite) await mandarConvites(r)
-      opcoes.depois?.()
+      opcoes.depois?.(r)
     } catch (e) {
       falhou(e)
     }

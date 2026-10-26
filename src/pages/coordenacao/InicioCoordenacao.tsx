@@ -39,11 +39,24 @@ export default function InicioCoordenacao() {
   const itens: ItemAtencao[] = []
   const avisos = avisosPendentes(db, colegio.id)
   if (avisos.length) {
+    // Aviso sem turma é da Solar (prova excluída); os outros, mudanças dos professores nas listas.
+    const daSolar = avisos.filter((e) => !e.turmaId).length
+    const dosProfessores = avisos.length - daSolar
     itens.push({
       chave: 'avisos',
       texto: (
         <>
-          Os professores fizeram <strong>{plural(avisos.length, 'mudança', 'mudanças')}</strong> nas listas de alunos que você ainda não viu.
+          {dosProfessores > 0 && (
+            <>
+              Os professores fizeram <strong>{plural(dosProfessores, 'mudança', 'mudanças')}</strong> nas listas de alunos que você ainda não viu.
+            </>
+          )}
+          {dosProfessores > 0 && daSolar > 0 && ' '}
+          {daSolar > 0 && (
+            <>
+              A Solar mandou <strong>{plural(daSolar, 'aviso', 'avisos')}</strong> sobre as provas.
+            </>
+          )}
         </>
       ),
       acao: { rotulo: 'Ver avisos', para: `${base}/avisos` },

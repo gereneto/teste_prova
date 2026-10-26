@@ -25,7 +25,7 @@ export default function Avisos() {
       <Cabecalho
         sobretitulo={colegio.nome}
         titulo="Avisos"
-        subtitulo="Mudanças que os professores fizeram nas listas de alunos. Elas já valem: marque que viu e, se quiser, corrija na turma."
+        subtitulo="Mudanças que os professores fizeram nas listas de alunos e avisos da Solar sobre as provas. Elas já valem: marque que viu e, se quiser, corrija na turma."
         acoes={
           pendentes.length > 1 && (
             <button className="btn" onClick={() => marcarCiente(pendentes.map((e) => e.id))}>
@@ -36,7 +36,7 @@ export default function Avisos() {
       />
 
       {!pendentes.length ? (
-        <Vazio titulo="Nenhuma mudança nova">Quando um professor incluir, corrigir ou tirar um aluno da lista, o aviso aparece aqui.</Vazio>
+        <Vazio titulo="Nenhuma mudança nova">Quando um professor incluir, corrigir ou tirar um aluno da lista, ou a Solar excluir uma prova, o aviso aparece aqui.</Vazio>
       ) : (
         <ul className="avisos">
           {pendentes.map((evento) => (
@@ -67,7 +67,9 @@ export default function Avisos() {
   )
 }
 
+// Aviso sem turma é da Solar (prova excluída).
 const turmaDoEvento = (db: Db, evento: Evento) => {
+  if (!evento.turmaId) return 'Solar'
   const turma = db.turmas.find((t) => t.id === evento.turmaId)
   return turma ? turmaNome(turma) : 'turma'
 }

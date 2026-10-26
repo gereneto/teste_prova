@@ -62,7 +62,7 @@ async function buscar(url: string): Promise<Blob> {
  * (lib/pdf.ts). Na plataforma, o arquivo vem por uma URL assinada do Storage que vale um minuto; na demonstração, do
  * IndexedDB deste navegador (lança erro se o arquivo enviado não estiver aqui).
  */
-export async function baixarPdfDoCaderno(caderno: Caderno) {
+export async function baixarPdfDoCaderno(caderno: Pick<Caderno, 'id' | 'pdf' | 'disciplina' | 'serie'>) {
   const pdf = caderno.pdf
   if (!pdf) return
   const banco = servidor()

@@ -21,6 +21,7 @@ import {
   type MotivoSaida,
   type PapelSolar,
   type Questao,
+  type RespostasDoColegio,
   type Serie,
   type Sexo,
   type Situacao,
@@ -708,9 +709,13 @@ export function editarAvaliacao(id: Id, dados: DadosAvaliacao) {
   servidor()?.rpc('prova', 'editar_avaliacao', { id, titulo: dados.titulo, inicio: dados.aplicacaoInicio, fim: dados.aplicacaoFim, prazo: dados.prazoLancamento })
 }
 
-export function removerAvaliacao(id: Id) {
+/** As respostas de cada prova, por colégio (das somas da rede): as provas que têm alguma ficam arquivadas. */
+export type RespostasPorCaderno = Partial<Record<Id, RespostasDoColegio[]>>
+
+export function removerAvaliacao(id: Id, respostas: RespostasPorCaderno = {}) {
   const cadernos = getDb().cadernos.filter((c) => c.avaliacaoId === id).map((c) => c.id)
   atualizar((db) => {
+    for (const caderno of db.cadernos.filter((c) => c.avaliacaoId === id)) arquivar(db, caderno, respostas[caderno.id] ?? [])
     const titulo = db.avaliacoes.find((a) => a.id === id)?.titulo
     db.avaliacoes = db.avaliacoes.filter((a) => a.id !== id)
     db.cadernos = db.cadernos.filter((c) => c.avaliacaoId !== id)
@@ -718,8 +723,10 @@ export function removerAvaliacao(id: Id) {
     registrar(db, `Excluiu a ${titulo ?? 'avaliação'}.`)
   })
   const banco = servidor()
-  if (banco) banco.rpc('prova', 'remover_avaliacao', { id }, { depois: () => banco.removerPdf(cadernos) })
-  else cadernos.forEach((c) => apagarPdf(c).catch(() => {}))
+  // O PDF de uma prova arquivada fica guardado; o banco diz quais ele arquivou.
+  if (banco)
+    banco.rpc('prova', 'remover_avaliacao', { id }, { depois: (arquivadas) => banco.removerPdf(cadernos.filter((c) => !(Array.isArray(arquivadas) && arquivadas.includes(c)))) })
+  else cadernos.filter((c) => !respostas[c]?.length).forEach((c) => apagarPdf(c).catch(() => {}))
 }
 
 export function adicionarCaderno(avaliacaoId: Id, serie: Serie, disciplina: Disciplina): Id {
@@ -731,14 +738,64 @@ export function adicionarCaderno(avaliacaoId: Id, serie: Serie, disciplina: Disc
   return caderno.id
 }
 
-export function removerCaderno(id: Id) {
+/**
+ * Exclui a prova. Se já tem respostas (`colegios`, das somas da rede), ela fica arquivada em "Provas excluídas", com o
+ * PDF guardado, e a coordenação de cada colégio recebe um aviso. O banco confere de novo e devolve se arquivou.
+ */
+export function removerCaderno(id: Id, colegios: RespostasDoColegio[] = []) {
   atualizar((db) => {
+    const caderno = db.cadernos.find((c) => c.id === id)
+    if (caderno) arquivar(db, caderno, colegios)
     db.cadernos = db.cadernos.filter((c) => c.id !== id)
     db.lancamentos = db.lancamentos.filter((l) => l.cadernoId !== id)
   })
   const banco = servidor()
-  if (banco) banco.rpc('prova', 'remover_caderno', { id }, { depois: () => banco.removerPdf([id]) })
-  else apagarPdf(id).catch(() => {})
+  if (banco)
+    banco.rpc('prova', 'remover_caderno', { id }, {
+      depois: (arquivada) => {
+        if (arquivada !== true) banco.removerPdf([id])
+      },
+    })
+  else if (!colegios.length) apagarPdf(id).catch(() => {})
+}
+
+/** A frase do aviso à coordenação (a mesma que o banco escreve em privado.arquivar_caderno). */
+export const textoAvisoExclusao = (caderno: Pick<Caderno, 'disciplina' | 'serie'>, avaliacao: string, colegio: Pick<RespostasDoColegio, 'alunos' | 'turmas'>) =>
+  `A Solar excluiu a prova de ${provaNome(caderno)} (${avaliacao}). As respostas que o colégio tinha lançado nela ` +
+  `(${colegio.alunos} ${colegio.alunos === 1 ? 'aluno' : 'alunos'}, em ${colegio.turmas} ${colegio.turmas === 1 ? 'turma' : 'turmas'}) ` +
+  'saíram do site, e os resultados dessa prova deixam de aparecer. A Solar guardou uma cópia.'
+
+/** Guarda o resumo da prova excluída e avisa cada colégio que tinha respostas. Sem respostas, não faz nada. */
+function arquivar(db: Draft<Db>, caderno: Draft<Caderno>, colegios: RespostasDoColegio[]) {
+  if (!colegios.length) return
+  const avaliacao = db.avaliacoes.find((a) => a.id === caderno.avaliacaoId)
+  const titulo = avaliacao?.titulo ?? 'avaliação'
+  db.excluidas.push({
+    id: novoId('excluida'),
+    cadernoId: caderno.id,
+    avaliacaoId: caderno.avaliacaoId,
+    avaliacaoTitulo: titulo,
+    anoLetivo: avaliacao?.anoLetivo ?? db.config.anoLetivo,
+    serie: caderno.serie,
+    disciplina: caderno.disciplina,
+    questoes: caderno.questoes.length,
+    pdf: caderno.pdf ? { ...caderno.pdf } : null,
+    colegios: colegios.map((c) => ({ ...c })),
+    em: agoraIso(),
+    por: autorAtual(),
+  })
+  for (const colegio of colegios) {
+    db.historico.push({
+      id: novoId('ev'),
+      em: agoraIso(),
+      por: autorAtual(),
+      colegioId: colegio.colegioId,
+      turmaId: null,
+      cadernoId: null,
+      texto: textoAvisoExclusao(caderno, titulo, colegio),
+      avisarCoordenacao: true,
+    })
+  }
 }
 
 /** Muda a prova na hora e, na plataforma, grava a prova inteira (com o motivo, se a mudança de correção tiver um). */

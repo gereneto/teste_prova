@@ -91,6 +91,19 @@ export const normalizar = (texto: string) =>
 
 export const compararTexto = (a: string, b: string) => a.localeCompare(b, 'pt-BR')
 
+const ORDINAIS = ['primeiro', 'segundo', 'terceiro', 'quarto', 'quinto']
+
+/** O que a Solar digita para confirmar a exclusão de uma prova com respostas: "excluir prova portugues quinto ano". */
+export const fraseParaExcluirProva = (caderno: { serie: Serie; disciplina: string }) =>
+  `excluir prova ${normalizar(caderno.disciplina)} ${ORDINAIS[caderno.serie - 1]} ano`
+
+/** O mesmo para a avaliação inteira: "excluir avaliacao 2026". */
+export const fraseParaExcluirAvaliacao = (anoLetivo: number) => `excluir avaliacao ${anoLetivo}`
+
+/** A frase digitada confere, sem olhar maiúsculas, acentos e espaços a mais. */
+export const fraseConfere = (digitado: string, frase: string) =>
+  normalizar(digitado).replace(/\s+/g, ' ').trim() === normalizar(frase)
+
 export function ordenarTurmas<T extends Pick<Turma, 'serie' | 'nome'>>(turmas: T[]): T[] {
   return [...turmas].sort((a, b) => a.serie - b.serie || compararTexto(a.nome, b.nome))
 }

@@ -23,7 +23,8 @@ import {
 } from './estatisticas'
 import { iniciaisRepetidas } from './iniciais'
 import { leituraDaLinha, MINIMO_QUADRO, type LinhaQuadro } from './leitura'
-import type { Caderno, Colegio, Db, Id, Questao, Turma } from '../types'
+import { compararTexto } from './formato'
+import type { Caderno, Colegio, Db, Id, Questao, RespostasDoColegio, Turma } from '../types'
 
 export type Faixas = [number, number, number, number, number]
 
@@ -329,4 +330,19 @@ export function progressoAg(ag: AgregadoTurma | undefined): Progresso {
     faltas: ag.faltas,
     adaptadas: ag.adaptadas,
   }
+}
+
+/** De que colégios são as respostas já lançadas numa prova: turmas e alunos com resposta, pelas somas da rede. */
+export function respostasPorColegio(db: Db, ags: AgregadoTurma[], cadernoId: Id): RespostasDoColegio[] {
+  const porColegio = new Map<Id, RespostasDoColegio>()
+  for (const ag of ags) {
+    if (ag.caderno !== cadernoId || !ag.comResposta) continue
+    const colegioId = db.turmas.find((t) => t.id === ag.turma)?.colegioId
+    if (!colegioId) continue
+    const item = porColegio.get(colegioId) ?? { colegioId, nome: db.colegios.find((c) => c.id === colegioId)?.nome ?? 'Colégio', turmas: 0, alunos: 0 }
+    item.turmas++
+    item.alunos += ag.comResposta
+    porColegio.set(colegioId, item)
+  }
+  return [...porColegio.values()].sort((a, b) => compararTexto(a.nome, b.nome))
 }

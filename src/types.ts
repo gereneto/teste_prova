@@ -189,6 +189,33 @@ export interface Evento {
   campos?: Record<string, { de: string; para: string }>
 }
 
+/** De que colégio eram as respostas de uma prova (alunos com alguma resposta lançada, contando os que faltaram). */
+export interface RespostasDoColegio {
+  colegioId: Id
+  nome: string
+  turmas: number
+  alunos: number
+}
+
+/**
+ * Uma prova excluída que já tinha respostas: sai do site, mas fica arquivada, com uma cópia de tudo no banco.
+ * A Solar vê este resumo em "Avaliações", no fim da página; a cópia das respostas não sai do banco.
+ */
+export interface ProvaExcluida {
+  id: Id
+  cadernoId: Id
+  avaliacaoId: Id
+  avaliacaoTitulo: string
+  anoLetivo: number
+  serie: Serie
+  disciplina: Disciplina
+  questoes: number
+  pdf: PdfCaderno | null
+  colegios: RespostasDoColegio[]
+  em: string
+  por: string
+}
+
 /** E-mail com o link de acesso. Nesta versão de teste o envio é simulado: o e-mail fica guardado aqui. */
 export interface Email {
   id: Id
@@ -216,6 +243,8 @@ export interface Db {
   avaliacoes: Avaliacao[]
   cadernos: Caderno[]
   lancamentos: Lancamento[]
+  /** Provas excluídas com respostas (só a Solar vê). */
+  excluidas: ProvaExcluida[]
   historico: Evento[]
   emails: Email[]
   config: Config
