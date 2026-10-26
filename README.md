@@ -31,6 +31,7 @@ Um roteiro para ver tudo em poucos minutos:
    - Em “Resultados”, veja os gráficos do colégio. As turmas ficam em “Ver por turma”, com o lembrete de cooperação.
 3. **Equipe Solar.** O Início aponta o gabarito do 4º ano ainda não conferido, o alerta de gabarito suspeito na questão 2 e um colégio sem responsável.
    - Em “Colégios”, cada colégio mostra quem cuida dele na Solar. Essa pessoa (ou a responsável pela equipe Solar) define quem responde pela coordenação: torna responsável qualquer pessoa da coordenação do colégio, ou cadastra uma nova, que recebe o link de acesso por e-mail. A coordenação não passa a responsabilidade.
+   - No fim da página de um colégio, “Arquivar colégio” (pede para digitar “arquivo colegio aurora”): o colégio sai das listas e das contas da rede, a equipe dele perde o acesso, e ele vai para “Colégios arquivados” (link no fim da lista), de onde pode ser reativado. Lá, a responsável pela equipe Solar pode excluí-lo em definitivo (“excluir colegio aurora”).
    - Em “Resultados”, escolha o 4º ano: o quadro de pontos de melhoria mostra cada questão em cada colégio.
    - Em “Avaliações”, troque o gabarito da questão 2 do 4º ano para A. Como já há respostas lançadas, o site pede um motivo, recalcula tudo e mostra um aviso nos resultados das turmas do 4º ano.
 4. **E-mails enviados.** Nesta versão os e-mails não saem de verdade: ficam na página “E-mails enviados” (link no rodapé da tela inicial). Abra o link de um e-mail para entrar direto na conta da pessoa.
@@ -84,7 +85,7 @@ Nesta versão os e-mails não são enviados: eles ficam guardados e aparecem em 
   - Histórico de alterações de cada turma.
 - **Equipe Solar:**
   - Início com o que precisa de ação: provas sem PDF, gabaritos a conferir, alertas de gabarito e colégios sem responsável.
-  - Colégios, cada um aos cuidados de uma pessoa da Solar, com o andamento e os cadastros.
+  - Colégios, cada um aos cuidados de uma pessoa da Solar, com o andamento e os cadastros. Colégio que sai da rede é arquivado (sem apagar nada; pode ser reativado) e, depois, pode ser excluído em definitivo pela responsável pela equipe Solar. Cada passo pede uma frase digitada.
   - Resultados com participação, turmas em ordem fixa e pontos de melhoria (colégio x questão).
   - Análise de cada questão com alertas escritos em palavras.
   - Conferência do gabarito, motivo obrigatório para mudar a correção depois do lançamento, e comentário por alternativa, que aparece para o professor.

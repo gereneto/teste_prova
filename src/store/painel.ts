@@ -19,8 +19,9 @@ export function vistaDaRede(db: Db, painel: PainelRede): Rede {
   const cadastros = new Map(painel.cadastros.map((c) => [c.turma, c]))
   const turmas = new Map(db.turmas.map((t) => [t.id, t.colegioId]))
   return {
-    // Só as provas que estão nos dados (as de uma disciplina fora da prova ficam de fora também aqui).
-    painel: { ...painel, turmas: painel.turmas.filter((ag) => cadernos.has(ag.caderno)) },
+    // Só as provas e as turmas que estão nos dados: as de uma disciplina fora da prova e as dos colégios arquivados
+    // ficam de fora também aqui.
+    painel: { ...painel, turmas: painel.turmas.filter((ag) => cadernos.has(ag.caderno) && turmas.has(ag.turma)) },
     cadernoDe: (id) => cadernos.get(id),
     agDe: (cadernoId, turmaId) => ags.get(`${cadernoId}__${turmaId}`),
     cadastroDe: (turmaId) => cadastros.get(turmaId),

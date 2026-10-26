@@ -19,6 +19,7 @@ import AvaliacaoDetalhe from './pages/solar/AvaliacaoDetalhe'
 import Avaliacoes from './pages/solar/Avaliacoes'
 import ColegioDetalhe from './pages/solar/ColegioDetalhe'
 import Colegios from './pages/solar/Colegios'
+import ColegiosArquivados, { ColegioArquivadoDetalhe } from './pages/solar/ColegiosArquivados'
 import Configuracoes from './pages/solar/Configuracoes'
 import EquipeSolar from './pages/solar/EquipeSolar'
 import InicioSolar from './pages/solar/InicioSolar'
@@ -64,6 +65,8 @@ export default function App() {
           <Route index element={<InicioSolar />} />
           <Route path="colegios" element={<Colegios />} />
           <Route path="colegios/:colegioId" element={<ColegioDetalhe />} />
+          <Route path="colegios/arquivados" element={<ColegiosArquivados />} />
+          <Route path="colegios/arquivados/:colegioId" element={<ColegioArquivadoDetalhe />} />
           <Route path="avaliacoes" element={<Avaliacoes />} />
           <Route path="avaliacoes/:avaliacaoId" element={<AvaliacaoDetalhe />} />
           <Route path="resultados" element={<ResultadosRede />} />

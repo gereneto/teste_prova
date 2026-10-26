@@ -34,7 +34,7 @@ import { habilidadesDoAno } from './bncc'
 import { NOMES_ADULTOS, NOMES_MENINAS, NOMES_MENINOS, SOBRENOMES } from './nomes'
 
 /** Mude quando o formato dos dados mudar: o navegador descarta o que tinha salvo e recria os exemplos. */
-export const VERSAO_DADOS = 8
+export const VERSAO_DADOS = 9
 
 const ANO_LETIVO = 2026
 const ANO_ANTERIOR = 2025
@@ -496,6 +496,7 @@ export function gerarDadosExemplo(hoje = hojeIso()): Db {
   return {
     versao: VERSAO_DADOS,
     colegios,
+    arquivados: [],
     coordenadores,
     professores,
     equipeSolar,

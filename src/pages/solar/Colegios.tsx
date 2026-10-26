@@ -1,4 +1,4 @@
-import { ChevronRight, Plus } from 'lucide-react'
+import { Archive, ChevronRight, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Cabecalho, Cartao, Selo, Vazio } from '../../components/ui'
@@ -85,6 +85,13 @@ export default function Colegios() {
           </ul>
         )}
       </Cartao>
+      {db.arquivados.length > 0 && (
+        <p>
+          <Link className="btn btn-fantasma" to="/solar/colegios/arquivados">
+            <Archive size={16} aria-hidden /> Colégios arquivados ({db.arquivados.length})
+          </Link>
+        </p>
+      )}
     </>
   )
 }

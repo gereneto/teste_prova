@@ -48,6 +48,26 @@ export interface Colegio {
   membroSolarId: Id | null
 }
 
+/** A frase do histórico do colégio ao ser arquivado (a mesma que o banco grava): dela saem a data e o autor. */
+export const TEXTO_ARQUIVOU = 'Arquivou o colégio.'
+
+/**
+ * Colégio arquivado pela Solar: sai das telas e das contas da rede, e a equipe dele perde o acesso, mas nada se
+ * apaga (reativado, volta como estava). Guarda junto tudo o que era do colégio; só a Solar o vê.
+ */
+export interface ColegioArquivado {
+  colegio: Colegio
+  /** Quando e por quem foi arquivado (do histórico do colégio). */
+  em: string
+  por: string
+  coordenadores: Coordenador[]
+  professores: Professor[]
+  turmas: Turma[]
+  alunos: Aluno[]
+  lancamentos: Lancamento[]
+  historico: Evento[]
+}
+
 /** Pessoa da coordenação de um colégio. Só uma é a responsável, e é ela quem cadastra as demais. */
 export interface Coordenador extends Contato, ComAcesso {
   id: Id
@@ -235,6 +255,8 @@ export interface Config {
 export interface Db {
   versao: number
   colegios: Colegio[]
+  /** Colégios arquivados (só a Solar os vê), com o que era de cada um. */
+  arquivados: ColegioArquivado[]
   coordenadores: Coordenador[]
   professores: Professor[]
   equipeSolar: MembroSolar[]

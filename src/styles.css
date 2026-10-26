@@ -1251,6 +1251,9 @@ abbr[title] {
 .lista-link-colegio {
   grid-template-columns: minmax(0, 1.4fr) minmax(70px, 0.5fr) minmax(70px, 0.5fr) minmax(0, 1.2fr) 20px;
 }
+.lista-link-arquivado {
+  grid-template-columns: minmax(0, 1fr) auto 20px;
+}
 
 .pendencias {
   list-style: none;
@@ -3601,7 +3604,8 @@ html.letra-maior .janela {
     padding-left: 30px;
   }
   .lista-link,
-  .lista-link-colegio {
+  .lista-link-colegio,
+  .lista-link-arquivado {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 2px 12px;
   }

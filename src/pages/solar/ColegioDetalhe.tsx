@@ -1,9 +1,9 @@
-import { ChartColumn, Crown, Pencil } from 'lucide-react'
+import { Archive, ChartColumn, Crown, Pencil } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { AvisoEnvio, BotaoReenviar } from '../../components/AvisoEnvio'
 import { FormularioContato } from '../../components/FormularioContato'
-import { Cabecalho, Cartao, Confirmacao, Selo, SeloStatus, Vazio } from '../../components/ui'
+import { Aviso, Cabecalho, Cartao, Confirmacao, Selo, SeloStatus, Vazio } from '../../components/ui'
 import {
   avaliacaoAtual,
   cadernosDaSerie,
@@ -16,12 +16,13 @@ import {
   turmasDoColegio,
 } from '../../lib/consultas'
 import { progressoAg } from '../../lib/rede'
-import { dataCurta, plural, turmaNome } from '../../lib/formato'
-import { definirMembroSolarDoColegio, definirResponsavelDoColegio, editarColegio, tornarResponsavel } from '../../store/acoes'
+import { dataCurta, fraseConfere, fraseParaArquivarColegio, plural, turmaNome } from '../../lib/formato'
+import { arquivarColegio, definirMembroSolarDoColegio, definirResponsavelDoColegio, editarColegio, tornarResponsavel } from '../../store/acoes'
 import { useDb } from '../../store/db'
 import { useRede } from '../../store/painel'
 import { usePerfil } from '../../store/perfil'
 import { FormularioColegio } from './Colegios'
+import { CampoFrase } from './ColegiosArquivados'
 import { PLATAFORMA } from '../../plataforma/modo'
 import type { Coordenador } from '../../types'
 
@@ -33,6 +34,9 @@ export default function ColegioDetalhe() {
   const [editando, setEditando] = useState(false)
   const [trocando, setTrocando] = useState(false)
   const [escolhida, setEscolhida] = useState<Coordenador | null>(null)
+  const [arquivando, setArquivando] = useState(false)
+  const [frase, setFrase] = useState('')
+  const navigate = useNavigate()
   // Ao cadastrar o colégio já com a pessoa responsável, a página abre avisando do e-mail enviado.
   const location = useLocation()
   const [enviado, setEnviado] = useState<string | null>((location.state as { enviado?: string | null } | null)?.enviado ?? null)
@@ -50,6 +54,11 @@ export default function ColegioDetalhe() {
   const responsavel = equipe.find((c) => c.responsavel)
   const avaliacao = avaliacaoAtual(db)
   const historico = db.historico.filter((e) => e.colegioId === colegio.id).slice(-10).reverse()
+  const professores = db.professores.filter((p) => p.colegioId === colegio.id && p.ativo)
+  const emAndamento = avaliacao
+    ? turmas.filter((t) => cadernosDaSerie(db, avaliacao.id, t.serie).some((c) => progressoAg(rede.agDe(c.id, t.id)).status === 'em_andamento'))
+    : []
+  const fraseArquivar = fraseParaArquivarColegio(colegio.nome)
 
   return (
     <>
@@ -237,6 +246,49 @@ export default function ColegioDetalhe() {
           </ul>
         </details>
       )}
+
+      {editarRede && (
+        <Cartao
+          titulo="Arquivar colégio"
+          sub="Para um colégio que saiu da rede: a coordenação e os professores deixam de entrar, e o colégio sai das listas e das contas da rede. Nada se apaga, e o colégio pode ser reativado."
+        >
+          <button
+            className="btn btn-perigo"
+            onClick={() => {
+              setFrase('')
+              setArquivando(true)
+            }}
+          >
+            <Archive size={16} aria-hidden /> Arquivar colégio
+          </button>
+        </Cartao>
+      )}
+
+      <Confirmacao
+        titulo={`Arquivar o ${colegio.nome}?`}
+        aberta={arquivando}
+        rotuloConfirmar="Arquivar colégio"
+        perigo
+        bloqueado={!fraseConfere(frase, fraseArquivar)}
+        aoConfirmar={() => {
+          arquivarColegio(colegio.id)
+          navigate(`/solar/colegios/arquivados/${colegio.id}`)
+        }}
+        aoFechar={() => setArquivando(false)}
+      >
+        <p>
+          O colégio sai da lista de colégios, do Início e dos resultados da rede, também nos anos passados.
+          {equipe.length + professores.length > 0 &&
+            ` A coordenação (${plural(equipe.length, 'pessoa', 'pessoas')}) e os professores (${professores.length}) deixam de entrar${PLATAFORMA ? ' na Plataforma Solar' : ''}; quem também está em outro colégio continua entrando por ele.`}
+        </p>
+        <p>Nada se apaga: o colégio fica em “Colégios arquivados”, onde pode ser reativado com tudo como estava.</p>
+        {emAndamento.length > 0 && (
+          <Aviso tom="atencao">
+            Há lançamentos em andamento: {emAndamento.map(turmaNome).join(', ')}. Arquivado, ninguém do colégio continua o lançamento.
+          </Aviso>
+        )}
+        <CampoFrase frase={fraseArquivar} digitado={frase} aoDigitar={setFrase} />
+      </Confirmacao>
     </>
   )
 }
